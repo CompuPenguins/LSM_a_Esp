@@ -26,6 +26,7 @@ with mp_holistic.Holistic(
 
     while cap.isOpened():
         ret, frame = cap.read()
+        frame = cv2.flip(frame,1)
         if not ret:
             break
 
