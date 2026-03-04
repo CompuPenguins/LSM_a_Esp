@@ -1,0 +1,6 @@
+name: lsm
+channels:
+  - defaults
+dependencies:
+  - python=3.11.7
+prefix: /home/ramona/miniconda3/envs/lsm
