@@ -1,53 +1,39 @@
 import cv2
 import mediapipe as mp
 
-mp_holistic = mp.solutions.holistic
 mp_drawing = mp.solutions.drawing_utils
+mp_drawing_styles = mp.solutions.drawing_styles
+mp_holistic = mp.solutions.holistic
 
 cap = cv2.VideoCapture(0)
 
-# Landmark indices we want
-FACE_POINTS = [
-    33, 133,        # Left eye corners
-    362, 263,       # Right eye corners
-    61, 291,        # Lip corners
-    105, 334        # Eyebrow midpoints
-]
-
 with mp_holistic.Holistic(
-    static_image_mode=False,
-    model_complexity=1,
-    smooth_landmarks=True,
-    enable_segmentation=False,
-    refine_face_landmarks=False,
-    min_detection_confidence=0.7,
-    min_tracking_confidence=0.7
+    min_detection_confidence=0.5,
+    min_tracking_confidence=0.5,
+    smooth_landmarks=True
 ) as holistic:
-
     while cap.isOpened():
-        ret, frame = cap.read()
-        frame = cv2.flip(frame,1)
-        if not ret:
-            break
+        success, image = cap.read()
+        if not success:
+            print("Ignoring empty camera frame.")
+            continue
 
-        image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        image = cv2.flip(image, 1)
+
+        image.flags.writeable = False
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         results = holistic.process(image)
+
+        image.flags.writeable = True
         image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
 
-        h, w, _ = image.shape
+        mp_drawing.draw_landmarks(
+            image,
+            results.pose_landmarks,
+            mp_holistic.POSE_CONNECTIONS,
+            landmark_drawing_spec=mp_drawing_styles.get_default_pose_landmarks_style()
+        )
 
-        # =========================
-        # FACE - Selected Points
-        # =========================
-        if results.face_landmarks:
-            for idx in FACE_POINTS:
-                landmark = results.face_landmarks.landmark[idx]
-                x, y = int(landmark.x * w), int(landmark.y * h)
-                cv2.circle(image, (x, y), 5, (0, 255, 0), -1)
-
-        # =========================
-        # HANDS (normal drawing)
-        # =========================
         if results.left_hand_landmarks:
             mp_drawing.draw_landmarks(
                 image,
@@ -62,9 +48,9 @@ with mp_holistic.Holistic(
                 mp_holistic.HAND_CONNECTIONS
             )
 
-        cv2.imshow("Minimal Face + Hands", image)
+        cv2.imshow('MediaPipe Holistic', image)
 
-        if cv2.waitKey(10) & 0xFF == 27:
+        if cv2.waitKey(5) & 0xFF == 27:
             break
 
 cap.release()
