@@ -2,3 +2,4 @@
 lsm_dataset/
 .ipynb_checkpoints/
 MSLwords1/
+*.csv
