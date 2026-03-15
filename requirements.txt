@@ -1,6 +1,11 @@
 mediapipe==0.10.9
 opencv-python==4.13.0.92
-pip==26.0.1
-setuptools==80.10.2
-uv==0.10.8
-wheel==0.46.3
+numpy==1.26.4
+pandas==2.2.3
+pyarrow==17.0.0
+rtmlib==0.0.13
+onnxruntime==1.20.1
+tqdm==4.67.1
+matplotlib==3.9.2
+seaborn==0.13.2
+ipykernel==6.29.5
