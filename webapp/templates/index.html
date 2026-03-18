@@ -203,6 +203,39 @@
   @keyframes rec-btn-pulse { 0%,100%{background:#ff4d6d08} 50%{background:#ff4d6d18} }
   .btn-record:disabled { opacity: 0.35; cursor: not-allowed; }
 
+  .btn-secondary {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.08em;
+    cursor: pointer;
+    transition: all 0.2s;
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+  }
+  .btn-secondary:hover:not(:disabled) {
+    border-color: var(--accent2);
+    color: var(--accent2);
+    background: #7c5cfc12;
+  }
+  .btn-secondary:disabled {
+    opacity: 0.35;
+    cursor: not-allowed;
+  }
+
+  .btn-secondary .icon {
+    font-size: 13px;
+    line-height: 1;
+  }
+
   .btn-record .dot {
     width: 8px; height: 8px;
     border-radius: 50%;
@@ -458,6 +491,10 @@
         <div class="dot"></div>
         <span id="btnLabel">Iniciar grabación</span>
       </button>
+      <button class="btn-secondary" id="btnFlipCam" disabled>
+        <span class="icon">🔄</span>
+        <span id="btnFlipCamLabel">Cambiar cámara</span>
+      </button>
       <div class="kbd-hint">o presiona <span class="kbd">ESPACIO</span></div>
 
       <div class="slider-row" style="margin-top:8px">
@@ -502,37 +539,43 @@
 
 <div class="toast" id="toast"></div>
 
-<!-- MediaPipe Holistic -->
+<!-- Overlay visual en tiempo real (no se usa para inferencia) -->
 <script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
 
 <script>
+console.log('=== LSM Recognizer iniciando ===');
+console.log('navigator.mediaDevices:', !!navigator.mediaDevices);
+console.log('getUserMedia:', !!navigator.mediaDevices?.getUserMedia);
+
 // ─────────────────────────────────────────────────────────────────────────────
-// Constantes — deben coincidir exactamente con record_and_infer.py
+// Constantes
 // ─────────────────────────────────────────────────────────────────────────────
 const TMAX      = 200;
-const N_LM      = 133;
-const INPUT_DIM = 266;   // 133 * 2  (solo x, y; sin visibility)
-
-// Índices de los 17 keypoints COCO que se extraen de los 33 de MediaPipe Pose
+const FPS_CAPTURE = 10;  // Capturar 10 frames por segundo
+const MIRROR    = true;  // Espejo horizontal
 const MP_POSE_TO_COCO17 = [0,2,5,7,8,11,12,13,14,15,16,23,24,25,26,27,28];
-
-// Índices de hombros/caderas para centrado y escala (igual que dataset.py)
-const S_L = 5, S_R = 6;   // hombros (izq, der) en los 17 COCO
-const H_L = 11, H_R = 12; // caderas
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Estado global
 // ─────────────────────────────────────────────────────────────────────────────
-let state = 'IDLE';   // IDLE | RECORDING | PROCESSING
-let recordedFrames = [];
+let state = 'IDLE';        // IDLE | RECORDING | PROCESSING
+let recordedFrames = [];   // list[base64_encoded_frames]
 let lastResults = null;
+let captureInterval = null;
+let cameraStream = null;
+let holistic = null;
+let overlayLoopId = null;
+let overlayBusy = false;
+let currentFacingMode = 'user'; // user | environment
 
 const videoEl     = document.getElementById('videoEl');
 const canvasEl    = document.getElementById('canvasEl');
 const ctx         = canvasEl.getContext('2d');
+const captureCanvas = document.createElement('canvas');
+const captureCtx    = captureCanvas.getContext('2d');
 const btnRecord   = document.getElementById('btnRecord');
+const btnFlipCam  = document.getElementById('btnFlipCam');
+const btnFlipCamLabel = document.getElementById('btnFlipCamLabel');
 const btnLabel    = document.getElementById('btnLabel');
 const recRing     = document.getElementById('recRing');
 const frameHud    = document.getElementById('frameHud');
@@ -554,154 +597,75 @@ const confThreshSlider = document.getElementById('confThresh');
 const trigThreshSlider = document.getElementById('trigThresh');
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Extracción de landmarks — idéntica a extract_landmarks() en Python
+// Captura de frames
 // ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Convierte los resultados de MediaPipe Holistic en un array (133, 3).
- * Pose: 17 keypoints COCO (subset de los 33 de MP)
- * Mano izq: índices 91-111 (21 keypoints)
- * Mano der: índices 112-132 (21 keypoints)
+ * Captura un frame del canvas y lo codifica en base64 (JPEG).
+ * RTMPose en el backend hará la extracción de landmarks.
  */
-function extractLandmarks(results, imgW, imgH) {
-  // (133, 3) aplanado en Float32Array — orden: [x0,y0,v0, x1,y1,v1, ...]
-  const kpts = new Float32Array(N_LM * 3);  // 0-filled
-
-  if (results.poseLandmarks) {
-    MP_POSE_TO_COCO17.forEach((mpIdx, cocoIdx) => {
-      const lm = results.poseLandmarks[mpIdx];
-      if (!lm) return;
-      const base = cocoIdx * 3;
-      kpts[base]     = lm.x * imgW;
-      kpts[base + 1] = lm.y * imgH;
-      kpts[base + 2] = lm.visibility ?? 1.0;
-    });
+function captureFrameAsBase64() {
+  if (!videoEl || videoEl.videoWidth === 0 || videoEl.videoHeight === 0) {
+    return null;
   }
 
-  if (results.leftHandLandmarks) {
-    results.leftHandLandmarks.forEach((lm, i) => {
-      const base = (91 + i) * 3;
-      kpts[base]     = lm.x * imgW;
-      kpts[base + 1] = lm.y * imgH;
-      kpts[base + 2] = 1.0;
-    });
-  }
+  // Usar canvas independiente para no contaminar con overlay
+  captureCanvas.width = videoEl.videoWidth;
+  captureCanvas.height = videoEl.videoHeight;
 
-  if (results.rightHandLandmarks) {
-    results.rightHandLandmarks.forEach((lm, i) => {
-      const base = (112 + i) * 3;
-      kpts[base]     = lm.x * imgW;
-      kpts[base + 1] = lm.y * imgH;
-      kpts[base + 2] = 1.0;
-    });
-  }
+  // Redibujar frame actual
+  captureCtx.save();
+  captureCtx.scale(-1, 1);  // mirror
+  captureCtx.translate(-captureCanvas.width, 0);
+  captureCtx.drawImage(videoEl, 0, 0, captureCanvas.width, captureCanvas.height);
+  captureCtx.restore();
 
-  return kpts;  // Float32Array(399)
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Preprocesamiento — idéntico a preprocess_and_pad() en Python
-// ─────────────────────────────────────────────────────────────────────────────
-
-/**
- * Lista de Float32Array(399) (T frames) →
- *   { landmarks: number[][], valid: boolean[] }
- * donde landmarks tiene shape (TMAX, 266) y valid tiene shape (TMAX,).
- */
-function preprocessAndPad(frames) {
-  const T = Math.min(frames.length, TMAX);
-
-  // Construir seq (T, 133, 3) como arrays JS planos para manipulación
-  // seq[t][lm][coord] — usamos acceso lineal: seq[t * N_LM*3 + lm*3 + c]
-  const seq = new Float32Array(T * N_LM * 3);
-  for (let t = 0; t < T; t++) {
-    seq.set(frames[t], t * N_LM * 3);
-  }
-
-  // Baja confianza (visibility < 0.3) → poner a 0
-  for (let t = 0; t < T; t++) {
-    for (let lm = 0; lm < N_LM; lm++) {
-      const base = t * N_LM * 3 + lm * 3;
-      if (seq[base + 2] < 0.3) {
-        seq[base] = seq[base + 1] = seq[base + 2] = 0;
-      }
-    }
-  }
-
-  // Centrar en punto medio de hombros
-  for (let t = 0; t < T; t++) {
-    const sL = t * N_LM * 3 + S_L * 3;
-    const sR = t * N_LM * 3 + S_R * 3;
-    const midX = (seq[sL] + seq[sR]) / 2;
-    const midY = (seq[sL + 1] + seq[sR + 1]) / 2;
-    for (let lm = 0; lm < N_LM; lm++) {
-      const base = t * N_LM * 3 + lm * 3;
-      seq[base]     -= midX;
-      seq[base + 1] -= midY;
-    }
-  }
-
-  // Escala: distancia hombros → caderas
-  for (let t = 0; t < T; t++) {
-    const sL = t * N_LM * 3 + S_L * 3;
-    const sR = t * N_LM * 3 + S_R * 3;
-    const hL = t * N_LM * 3 + H_L * 3;
-    const hR = t * N_LM * 3 + H_R * 3;
-
-    const smidX = (seq[sL] + seq[sR]) / 2;
-    const smidY = (seq[sL + 1] + seq[sR + 1]) / 2;
-    const hmidX = (seq[hL] + seq[hR]) / 2;
-    const hmidY = (seq[hL + 1] + seq[hR + 1]) / 2;
-
-    const dx = hmidX - smidX;
-    const dy = hmidY - smidY;
-    const scale = Math.max(Math.sqrt(dx * dx + dy * dy), 1e-6);
-
-    for (let lm = 0; lm < N_LM; lm++) {
-      const base = t * N_LM * 3 + lm * 3;
-      seq[base]     /= scale;
-      seq[base + 1] /= scale;
-    }
-  }
-
-  // Aplanar solo x,y → (TMAX, 266), con padding de ceros
-  const landmarks = [];
-  const valid = [];
-
-  for (let t = 0; t < TMAX; t++) {
-    const row = new Array(INPUT_DIM).fill(0);
-    if (t < T) {
-      for (let lm = 0; lm < N_LM; lm++) {
-        const src = t * N_LM * 3 + lm * 3;
-        row[lm * 2]     = seq[src];
-        row[lm * 2 + 1] = seq[src + 1];
-      }
-    }
-    landmarks.push(row);
-    valid.push(t < T);
-  }
-
-  return { landmarks, valid };
+  // Convertir a JPEG (base64)
+  const dataUrl = captureCanvas.toDataURL('image/jpeg', 0.8);
+  // Remover prefijo "data:image/jpeg;base64,"
+  const b64 = dataUrl.split(',')[1];
+  return b64;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Inferencia
 // ─────────────────────────────────────────────────────────────────────────────
 
+/**
+ * Envía los frames capturados al backend para:
+ * 1. Extracción con RTMPose (133 landmarks COCO-WholeBody)
+ * 2. Preprocesamiento (centrado, escalado)
+ * 3. Inferencia con modelo ONNX
+ */
 async function runInference(frames) {
   setUIState('INFERRING');
-  const { landmarks, valid } = preprocessAndPad(frames);
 
   try {
+    if (!Array.isArray(frames) || frames.length === 0) {
+      showToast('No hay frames para inferencia');
+      setUIState('IDLE');
+      return;
+    }
+
+    // Enviar frames en base64 al backend
     const res = await fetch('/infer', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ landmarks, valid }),
+      body: JSON.stringify({
+        frames: frames,
+        mirror: MIRROR,
+      }),
     });
+
     const data = await res.json();
-    if (!res.ok) throw new Error(data.error || 'Error del servidor');
+    if (!res.ok) {
+      throw new Error(data.error || 'Error del servidor');
+    }
+
+    console.log('Inferencia completada:', data);
     displayResult(data);
   } catch (err) {
+    console.error('Error en inferencia:', err);
     showToast('Error: ' + err.message);
     setUIState('IDLE');
   }
@@ -712,6 +676,11 @@ async function runInference(frames) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function setUIState(s) {
+  if (captureInterval) {
+    clearInterval(captureInterval);
+    captureInterval = null;
+  }
+
   state = s;
 
   // Botón
@@ -722,9 +691,29 @@ function setUIState(s) {
     frameHud.classList.add('visible');
     statusDot.className = 'status-dot record';
     statusLabel.textContent = 'Grabando…';
+
+    // Captura periódica de frames para RTMPose backend
+    const intervalMs = Math.max(50, Math.floor(1000 / FPS_CAPTURE));
+    captureInterval = setInterval(() => {
+      if (state !== 'RECORDING') return;
+      if (recordedFrames.length >= TMAX) return;
+
+      const b64 = captureFrameAsBase64();
+      if (!b64) return;
+
+      recordedFrames.push(b64);
+      frameHud.textContent = `⏺ ${recordedFrames.length} / ${TMAX}`;
+
+      if (recordedFrames.length >= TMAX) {
+        const frames = [...recordedFrames];
+        recordedFrames = [];
+        runInference(frames);
+      }
+    }, intervalMs);
   } else if (s === 'INFERRING') {
     btnRecord.classList.remove('recording');
     btnRecord.disabled = true;
+    if (btnFlipCam) btnFlipCam.disabled = true;
     btnLabel.textContent = 'Procesando…';
     recRing.classList.remove('active');
     frameHud.classList.remove('visible');
@@ -743,6 +732,7 @@ function setUIState(s) {
   } else {
     btnRecord.classList.remove('recording');
     btnRecord.disabled = false;
+    if (btnFlipCam) btnFlipCam.disabled = false;
     btnLabel.textContent = 'Iniciar grabación';
     recRing.classList.remove('active');
     frameHud.classList.remove('visible');
@@ -838,129 +828,325 @@ trigThreshSlider.addEventListener('input', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Dibujar landmarks sobre el canvas
+// Overlay MediaPipe (solo visual)
 // ─────────────────────────────────────────────────────────────────────────────
 
+function syncOverlayCanvasSize() {
+  if (!videoEl || videoEl.videoWidth === 0 || videoEl.videoHeight === 0) return;
+  if (canvasEl.width !== videoEl.videoWidth || canvasEl.height !== videoEl.videoHeight) {
+    canvasEl.width = videoEl.videoWidth;
+    canvasEl.height = videoEl.videoHeight;
+  }
+}
+
 function drawLandmarks(results) {
+  syncOverlayCanvasSize();
   ctx.save();
   ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
-  ctx.scale(-1, 1);  // mirror para coincidir con el video espejado
+  ctx.scale(-1, 1);
   ctx.translate(-canvasEl.width, 0);
 
-  const w = canvasEl.width, h = canvasEl.height;
+  const w = canvasEl.width;
+  const h = canvasEl.height;
 
-  function dot(lm, color, r = 3) {
+  function dot(lm, color, r = 4) {
+    if (!lm) return;
     ctx.beginPath();
     ctx.arc(lm.x * w, lm.y * h, r, 0, Math.PI * 2);
     ctx.fillStyle = color;
     ctx.fill();
   }
-  function line(a, b, color) {
+
+  function line(a, b, color, lw = 2) {
     if (!a || !b) return;
     ctx.beginPath();
     ctx.moveTo(a.x * w, a.y * h);
     ctx.lineTo(b.x * w, b.y * h);
     ctx.strokeStyle = color;
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = lw;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
     ctx.stroke();
   }
 
-  // Pose (los 17 COCO extraídos)
   if (results.poseLandmarks) {
     const pLMs = results.poseLandmarks;
     MP_POSE_TO_COCO17.forEach(idx => {
       const lm = pLMs[idx];
-      if (lm && (lm.visibility ?? 1) > 0.3)
-        dot(lm, 'rgba(0,229,160,0.85)', 4);
+      if (lm && (lm.visibility ?? 1) > 0.3) {
+        dot(lm, 'rgba(0,229,160,0.9)', 4);
+      }
     });
-    // Algunas conexiones clave
-    const pairs = [[11,13],[13,15],[12,14],[14,16],[11,12],[11,23],[12,24],[23,24]];
-    pairs.forEach(([a,b]) => line(pLMs[a], pLMs[b], 'rgba(0,229,160,0.35)'));
+    [[11,13],[13,15],[12,14],[14,16],[11,12],[11,23],[12,24],[23,24]]
+      .forEach(([a,b]) => line(pLMs[a], pLMs[b], 'rgba(0,229,160,0.55)', 2));
   }
 
-  // Manos
   const handConn = [
     [0,1],[1,2],[2,3],[3,4],
     [0,5],[5,6],[6,7],[7,8],
     [5,9],[9,10],[10,11],[11,12],
     [9,13],[13,14],[14,15],[15,16],
-    [13,17],[17,18],[18,19],[19,20],[0,17]
+    [13,17],[17,18],[18,19],[19,20],[0,17],
   ];
 
   function drawHand(lms, color) {
     if (!lms) return;
-    handConn.forEach(([a, b]) => line(lms[a], lms[b], color));
-    lms.forEach(lm => dot(lm, color, 2.5));
+    handConn.forEach(([a, b]) => line(lms[a], lms[b], color, 2));
+    lms.forEach(lm => dot(lm, color, 3));
   }
-  drawHand(results.leftHandLandmarks,  'rgba(124,92,252,0.85)');
-  drawHand(results.rightHandLandmarks, 'rgba(255,77,109,0.85)');
+
+  drawHand(results.leftHandLandmarks,  'rgba(124,92,252,0.9)');
+  drawHand(results.rightHandLandmarks, 'rgba(255,77,109,0.9)');
 
   ctx.restore();
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MediaPipe Holistic
-// ─────────────────────────────────────────────────────────────────────────────
-
-const holistic = new Holistic({
-  locateFile: file =>
-    `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`,
-});
-
-holistic.setOptions({
-  modelComplexity: 1,
-  smoothLandmarks: true,
-  minDetectionConfidence: 0.5,
-  minTrackingConfidence: 0.5,
-});
-
-holistic.onResults(results => {
-  lastResults = results;
-
-  // Sincronizar tamaño del canvas
-  if (canvasEl.width !== videoEl.videoWidth || canvasEl.height !== videoEl.videoHeight) {
-    canvasEl.width  = videoEl.videoWidth;
-    canvasEl.height = videoEl.videoHeight;
+function stopOverlayLoop() {
+  if (overlayLoopId) {
+    cancelAnimationFrame(overlayLoopId);
+    overlayLoopId = null;
   }
+}
 
-  drawLandmarks(results);
+function startOverlayLoop() {
+  if (!holistic || overlayLoopId) return;
 
-  // Grabar frame si estamos en modo grabación
-  if (state === 'RECORDING') {
-    const kpts = extractLandmarks(results, videoEl.videoWidth, videoEl.videoHeight);
-    recordedFrames.push(kpts);
-    frameHud.textContent = `⏺ ${recordedFrames.length} / ${TMAX}`;
+  const tick = async () => {
+    if (videoEl && videoEl.readyState >= 2 && !overlayBusy) {
+      overlayBusy = true;
+      try {
+        await holistic.send({ image: videoEl });
+      } catch (err) {
+        // Overlay opcional: no bloquear flujo principal
+      } finally {
+        overlayBusy = false;
+      }
+    }
+    overlayLoopId = requestAnimationFrame(tick);
+  };
 
-    // Auto-parar al llegar a TMAX
-    if (recordedFrames.length >= TMAX) {
-      const frames = [...recordedFrames];
-      recordedFrames = [];
-      runInference(frames);
+  overlayLoopId = requestAnimationFrame(tick);
+}
+
+async function setupHolisticOverlay() {
+  if (holistic || typeof Holistic === 'undefined') return;
+
+  holistic = new Holistic({
+    locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`,
+  });
+
+  holistic.setOptions({
+    modelComplexity: 1,
+    smoothLandmarks: true,
+    minDetectionConfidence: 0.5,
+    minTrackingConfidence: 0.5,
+  });
+
+  holistic.onResults(results => {
+    lastResults = results;
+    drawLandmarks(results);
+  });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cámara (captura para backend RTMPose)
+// ─────────────────────────────────────────────────────────────────────────────
+
+function isSecureCameraContext() {
+  const host = window.location.hostname;
+  const isLocalhost = host === 'localhost' || host === '127.0.0.1';
+  return window.isSecureContext || isLocalhost;
+}
+
+function showTapToEnableCamera(helpText = '') {
+  statusLabel.textContent = 'Toca para activar cámara';
+  camPlaceholder.innerHTML = `
+    <div class="icon">📷</div>
+    <div style="text-align:center; font-size:12px; line-height:1.4; max-width: 320px;">
+      <b>Toca para activar la cámara</b><br/>
+      En algunos celulares el permiso solo aparece
+      después de una acción del usuario.
+      ${helpText ? `<br/><br/><small style="color:#888;">${helpText}</small>` : ''}
+      <br/><br/>
+      <button id="btnEnableCam" style="
+        background:#00e5a0;
+        color:#0a0a0f;
+        border:none;
+        border-radius:6px;
+        padding:8px 12px;
+        font-weight:700;
+        cursor:pointer;
+      ">Activar cámara</button>
+    </div>
+  `;
+  const btn = document.getElementById('btnEnableCam');
+  if (btn) {
+    btn.addEventListener('click', () => initializeCamera({ userGesture: true }));
+  }
+}
+
+// Verificar disponibilidad de getUserMedia
+function checkCameraSupport() {
+  const hasGetUserMedia = !!(
+    (navigator.mediaDevices && navigator.mediaDevices.getUserMedia) ||
+    navigator.getUserMedia ||
+    navigator.webkitGetUserMedia ||
+    navigator.mozGetUserMedia
+  );
+  
+  return hasGetUserMedia;
+}
+
+function isLikelyMobileDevice() {
+  return /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '');
+}
+
+function updateFlipCameraButtonLabel() {
+  if (!btnFlipCamLabel) return;
+  const target = currentFacingMode === 'user' ? 'trasera' : 'frontal';
+  btnFlipCamLabel.textContent = `Cambiar a ${target}`;
+}
+
+async function flipCamera() {
+  if (state === 'RECORDING' || state === 'INFERRING') return;
+  currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+  updateFlipCameraButtonLabel();
+  await initializeCamera({ userGesture: true });
+}
+
+// Función para inicializar la cámara
+function initializeCamera({ userGesture = false } = {}) {
+  console.log('Iniciando cámara...');
+
+  const secureOk = isSecureCameraContext();
+  if (!secureOk) {
+    statusLabel.textContent = 'HTTP no permite cámara en móvil';
+    camPlaceholder.innerHTML = `
+      <div class="icon">🔒</div>
+      <div style="text-align:center; font-size:12px; line-height:1.4; max-width: 320px;">
+        <b>La cámara en celular requiere HTTPS</b><br/>
+        Estás abriendo por HTTP (${window.location.origin}).
+        <br/><br/>
+        Abre esta app con un enlace HTTPS (ngrok/cloudflared)
+        o usa localhost en el mismo dispositivo.
+      </div>
+    `;
+    btnRecord.disabled = true;
+    statusDot.className = 'status-dot';
+    return;
+  }
+  
+  const cameraSupported = checkCameraSupport();
+  console.log('Camera supported:', cameraSupported);
+
+  if (!cameraSupported) {
+    statusLabel.textContent = 'Cámara no disponible';
+    camPlaceholder.innerHTML = `
+      <div class="icon">⚠️</div>
+      <div style="text-align:center; font-size:12px; line-height:1.4;">
+        <b>Cámara no soportada</b><br/>
+        Tu navegador no soporta acceso a cámara.
+        <br/><br/>
+        <small style="color:#888; font-family:monospace;">
+          Intenta: Chrome, Firefox, Safari o Edge<br/>
+          en HTTPS
+        </small>
+      </div>
+    `;
+    btnRecord.disabled = true;
+    statusDot.className = 'status-dot';
+  } else {
+    try {
+      if (!userGesture) {
+        showTapToEnableCamera();
+        return;
+      }
+
+      if (cameraStream) {
+        cameraStream.getTracks().forEach(track => track.stop());
+        cameraStream = null;
+      }
+
+      navigator.mediaDevices.getUserMedia({
+        video: {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: { ideal: currentFacingMode },
+        },
+        audio: false,
+      }).then(stream => {
+        cameraStream = stream;
+        videoEl.srcObject = stream;
+
+        return videoEl.play();
+      }).then(() => {
+        console.log('Camera started successfully');
+        videoEl.classList.add('visible');
+        camPlaceholder.classList.add('hidden');
+        btnRecord.disabled = false;
+        if (btnFlipCam) {
+          btnFlipCam.disabled = false;
+          btnFlipCam.style.display = isLikelyMobileDevice() ? 'block' : 'none';
+        }
+        statusDot.className = 'status-dot ready';
+        statusLabel.textContent = 'Listo';
+
+        setupHolisticOverlay().then(() => {
+          startOverlayLoop();
+        });
+      }).catch(err => {
+        console.error('Camera error:', err);
+        
+        let errorMsg = err.message || String(err);
+        let helpText = '';
+        
+        if (err.name === 'NotAllowedError' || errorMsg.includes('Permission')) {
+          helpText = 'Permiso de cámara denegado. Revisa permisos del navegador y vuelve a tocar "Activar cámara".';
+        } else if (err.name === 'NotFoundError' || errorMsg.includes('not found')) {
+          helpText = 'No se encontró cámara en el dispositivo.';
+        } else if (errorMsg.includes('getUserMedia') || errorMsg.includes('mediaDevices')) {
+          helpText = 'Tu navegador no soporta acceso a cámara. Intenta Chrome/Safari/Firefox actualizado.';
+        } else {
+          helpText = errorMsg;
+        }
+
+        statusLabel.textContent = 'Error de cámara';
+        showTapToEnableCamera(helpText);
+        showToast(helpText);
+
+        if (btnFlipCam) {
+          btnFlipCam.disabled = true;
+        }
+      });
+    } catch (err) {
+      console.error('Error creating Camera:', err);
+      statusLabel.textContent = 'Error de inicialización';
+      showTapToEnableCamera('Error inicializando cámara: ' + err.message);
+      showToast('Error inicializando cámara: ' + err.message);
     }
   }
-});
+}
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Cámara
-// ─────────────────────────────────────────────────────────────────────────────
+if (btnFlipCam) {
+  updateFlipCameraButtonLabel();
+  btnFlipCam.addEventListener('click', () => {
+    flipCamera();
+  });
+}
 
-const camera = new Camera(videoEl, {
-  onFrame: async () => {
-    await holistic.send({ image: videoEl });
-  },
-  width: 1280,
-  height: 720,
-});
+// Iniciar cuando el documento esté listo
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', () => initializeCamera({ userGesture: false }));
+} else {
+  initializeCamera({ userGesture: false });
+}
 
-camera.start().then(() => {
-  videoEl.classList.add('visible');
-  camPlaceholder.classList.add('hidden');
-  btnRecord.disabled = false;
-  statusDot.className = 'status-dot ready';
-  statusLabel.textContent = 'Listo';
-}).catch(err => {
-  statusLabel.textContent = 'Error de cámara';
-  showToast('No se pudo acceder a la cámara: ' + err.message);
+window.addEventListener('beforeunload', () => {
+  stopOverlayLoop();
+  if (cameraStream) {
+    cameraStream.getTracks().forEach(track => track.stop());
+    cameraStream = null;
+  }
 });
 </script>
 </body>
