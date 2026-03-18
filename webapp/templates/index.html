@@ -1,0 +1,967 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>LSM — Lengua de Señas Mexicana</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet">
+<style>
+  /* ── Reset & Variables ─────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg:         #0a0a0f;
+    --surface:    #111118;
+    --border:     #1e1e2e;
+    --accent:     #00e5a0;
+    --accent2:    #7c5cfc;
+    --danger:     #ff4d6d;
+    --text:       #e8e8f0;
+    --muted:      #585870;
+    --mono:       'Space Mono', monospace;
+    --sans:       'Syne', sans-serif;
+  }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    overflow: hidden;
+  }
+
+  /* ── Layout ─────────────────────────────────────────────────────── */
+  .shell {
+    display: grid;
+    grid-template-columns: 1fr 340px;
+    grid-template-rows: 52px 1fr;
+    height: 100vh;
+    gap: 0;
+  }
+
+  /* ── Header ─────────────────────────────────────────────────────── */
+  header {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    padding: 0 24px;
+    border-bottom: 1px solid var(--border);
+    gap: 16px;
+    background: var(--surface);
+  }
+  .logo {
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: 0.12em;
+    color: var(--accent);
+    text-transform: uppercase;
+  }
+  .logo span { color: var(--muted); }
+  .status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--muted);
+    margin-left: auto;
+    transition: background 0.3s;
+  }
+  .status-dot.ready   { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .status-dot.record  { background: var(--danger);  box-shadow: 0 0 8px var(--danger); animation: pulse-dot 0.8s infinite; }
+  @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .status-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+  }
+
+  /* ── Camera panel ───────────────────────────────────────────────── */
+  .cam-panel {
+    position: relative;
+    background: #050508;
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  #videoEl {
+    width: 100%; height: 100%;
+    object-fit: cover;
+    transform: scaleX(-1);
+    opacity: 0;
+    transition: opacity 0.5s;
+  }
+  #videoEl.visible { opacity: 1; }
+
+  #canvasEl {
+    position: absolute;
+    inset: 0;
+    width: 100%; height: 100%;
+    pointer-events: none;
+  }
+
+  /* Recording border */
+  .rec-ring {
+    position: absolute;
+    inset: 0;
+    border: 3px solid var(--danger);
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .rec-ring.active { opacity: 1; animation: ring-pulse 0.7s infinite; }
+  @keyframes ring-pulse { 0%,100%{border-color:var(--danger)} 50%{border-color:#ff000044} }
+
+  /* Cam placeholder */
+  .cam-placeholder {
+    position: absolute;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    color: var(--muted);
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.05em;
+    transition: opacity 0.4s;
+  }
+  .cam-placeholder .icon { font-size: 40px; opacity: 0.4; }
+  .cam-placeholder.hidden { opacity: 0; pointer-events: none; }
+
+  /* Frame counter overlay */
+  .frame-hud {
+    position: absolute;
+    top: 14px; left: 14px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--danger);
+    letter-spacing: 0.06em;
+    opacity: 0;
+    transition: opacity 0.2s;
+  }
+  .frame-hud.visible { opacity: 1; }
+
+  /* ── Side panel ─────────────────────────────────────────────────── */
+  .side {
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  /* Controls section */
+  .controls {
+    padding: 24px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .section-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 4px;
+  }
+
+  /* Big record button */
+  .btn-record {
+    width: 100%;
+    padding: 14px;
+    border: 1.5px solid var(--border);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    text-transform: uppercase;
+  }
+  .btn-record:hover:not(:disabled) {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: #00e5a008;
+  }
+  .btn-record.recording {
+    border-color: var(--danger);
+    color: var(--danger);
+    background: #ff4d6d08;
+    animation: rec-btn-pulse 0.8s infinite;
+  }
+  @keyframes rec-btn-pulse { 0%,100%{background:#ff4d6d08} 50%{background:#ff4d6d18} }
+  .btn-record:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  .btn-record .dot {
+    width: 8px; height: 8px;
+    border-radius: 50%;
+    border: 1.5px solid currentColor;
+  }
+  .btn-record.recording .dot {
+    background: var(--danger);
+    border-color: var(--danger);
+  }
+
+  .kbd-hint {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    text-align: center;
+    letter-spacing: 0.05em;
+  }
+  .kbd {
+    display: inline-block;
+    padding: 1px 5px;
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    font-size: 9px;
+  }
+
+  /* Treshold sliders */
+  .slider-row {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .slider-header {
+    display: flex;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+  }
+  .slider-header span { color: var(--accent); }
+  input[type=range] {
+    width: 100%;
+    accent-color: var(--accent);
+    cursor: pointer;
+  }
+
+  /* ── Result area ─────────────────────────────────────────────────── */
+  .result-area {
+    flex: 1;
+    padding: 20px 24px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    overflow-y: auto;
+  }
+
+  /* Big glosa display */
+  .glosa-display {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    text-align: center;
+    min-height: 100px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: border-color 0.3s;
+  }
+  .glosa-display.has-result { border-color: var(--accent); }
+  .glosa-display.inferring  { border-color: var(--accent2); animation: infer-pulse 0.6s infinite; }
+  @keyframes infer-pulse { 0%,100%{border-color:var(--accent2)44} 50%{border-color:var(--accent2)} }
+
+  .glosa-name {
+    font-family: var(--sans);
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--accent);
+    letter-spacing: 0.03em;
+    line-height: 1;
+    word-break: break-word;
+  }
+  .glosa-placeholder {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.08em;
+  }
+  .glosa-conf {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+  }
+  .glosa-conf b { color: var(--text); }
+
+  /* Confidence bar */
+  .conf-bar-wrap {
+    width: 100%;
+    height: 2px;
+    background: var(--border);
+    border-radius: 1px;
+    overflow: hidden;
+    margin-top: 4px;
+  }
+  .conf-bar-fill {
+    height: 100%;
+    background: var(--accent);
+    border-radius: 1px;
+    width: 0%;
+    transition: width 0.4s ease;
+  }
+
+  /* Top-3 list */
+  .top3-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    color: var(--muted);
+    text-transform: uppercase;
+  }
+  .top3-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .top3-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    opacity: 0;
+    transform: translateX(-8px);
+    transition: opacity 0.3s, transform 0.3s;
+  }
+  .top3-item.show { opacity: 1; transform: translateX(0); }
+  .top3-rank {
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    width: 16px;
+    flex-shrink: 0;
+  }
+  .top3-name {
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 700;
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .top3-pct {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--muted);
+    flex-shrink: 0;
+  }
+  .top3-bar {
+    position: absolute;
+    left: 0; top: 0;
+    height: 100%;
+    background: var(--accent);
+    opacity: 0.07;
+    border-radius: 4px;
+    transition: width 0.4s ease;
+  }
+  .top3-item-inner {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 1;
+    padding: 7px 10px;
+    border-radius: 4px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    overflow: hidden;
+  }
+
+  /* Trigger prob */
+  .trigger-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: var(--mono);
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 0.05em;
+  }
+  .trigger-val { color: var(--text); }
+
+  /* Error toast */
+  .toast {
+    position: fixed;
+    bottom: 20px; left: 50%;
+    transform: translateX(-50%) translateY(80px);
+    background: #1a0a0f;
+    border: 1px solid var(--danger);
+    color: var(--danger);
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.05em;
+    transition: transform 0.3s ease;
+    z-index: 100;
+  }
+  .toast.visible { transform: translateX(-50%) translateY(0); }
+
+  /* Spinner for inferring state */
+  .spinner {
+    width: 18px; height: 18px;
+    border: 2px solid var(--border);
+    border-top-color: var(--accent2);
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: none;
+  }
+  .spinner.active { display: block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="shell">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">LSM<span>/</span>Recognizer</div>
+    <div class="status-label" id="statusLabel">Iniciando cámara…</div>
+    <div class="status-dot" id="statusDot"></div>
+  </header>
+
+  <!-- Camera -->
+  <main class="cam-panel">
+    <video id="videoEl" autoplay playsinline muted></video>
+    <canvas id="canvasEl"></canvas>
+    <div class="rec-ring" id="recRing"></div>
+    <div class="frame-hud" id="frameHud">⏺ 0 / 200</div>
+    <div class="cam-placeholder" id="camPlaceholder">
+      <div class="icon">📷</div>
+      <div>Esperando acceso a cámara…</div>
+    </div>
+  </main>
+
+  <!-- Side panel -->
+  <aside class="side">
+
+    <div class="controls">
+      <div class="section-label">Control</div>
+
+      <button class="btn-record" id="btnRecord" disabled>
+        <div class="dot"></div>
+        <span id="btnLabel">Iniciar grabación</span>
+      </button>
+      <div class="kbd-hint">o presiona <span class="kbd">ESPACIO</span></div>
+
+      <div class="slider-row" style="margin-top:8px">
+        <div class="slider-header">
+          Confianza mín. <span id="confThreshVal">70%</span>
+        </div>
+        <input type="range" id="confThresh" min="0" max="100" value="70">
+      </div>
+
+      <div class="slider-row">
+        <div class="slider-header">
+          End-trigger mín. <span id="trigThreshVal">60%</span>
+        </div>
+        <input type="range" id="trigThresh" min="0" max="100" value="60">
+      </div>
+    </div>
+
+    <div class="result-area">
+      <div class="section-label">Resultado</div>
+
+      <div class="glosa-display" id="glosaDisplay">
+        <div class="spinner" id="spinner"></div>
+        <div class="glosa-placeholder" id="glosaPlaceholder">GRABA UNA SEÑA</div>
+        <div class="glosa-name" id="glosaName" style="display:none"></div>
+        <div class="glosa-conf" id="glosaConf" style="display:none"></div>
+        <div class="conf-bar-wrap" id="confBarWrap" style="display:none">
+          <div class="conf-bar-fill" id="confBarFill"></div>
+        </div>
+      </div>
+
+      <div class="trigger-row" id="triggerRow" style="display:none">
+        <span>End-trigger prob.</span>
+        <span class="trigger-val" id="triggerVal">—</span>
+      </div>
+
+      <div class="top3-label" id="top3Label" style="display:none">Top 3</div>
+      <div class="top3-list" id="top3List"></div>
+    </div>
+
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<!-- MediaPipe Holistic -->
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/holistic/holistic.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+
+<script>
+// ─────────────────────────────────────────────────────────────────────────────
+// Constantes — deben coincidir exactamente con record_and_infer.py
+// ─────────────────────────────────────────────────────────────────────────────
+const TMAX      = 200;
+const N_LM      = 133;
+const INPUT_DIM = 266;   // 133 * 2  (solo x, y; sin visibility)
+
+// Índices de los 17 keypoints COCO que se extraen de los 33 de MediaPipe Pose
+const MP_POSE_TO_COCO17 = [0,2,5,7,8,11,12,13,14,15,16,23,24,25,26,27,28];
+
+// Índices de hombros/caderas para centrado y escala (igual que dataset.py)
+const S_L = 5, S_R = 6;   // hombros (izq, der) en los 17 COCO
+const H_L = 11, H_R = 12; // caderas
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Estado global
+// ─────────────────────────────────────────────────────────────────────────────
+let state = 'IDLE';   // IDLE | RECORDING | PROCESSING
+let recordedFrames = [];
+let lastResults = null;
+
+const videoEl     = document.getElementById('videoEl');
+const canvasEl    = document.getElementById('canvasEl');
+const ctx         = canvasEl.getContext('2d');
+const btnRecord   = document.getElementById('btnRecord');
+const btnLabel    = document.getElementById('btnLabel');
+const recRing     = document.getElementById('recRing');
+const frameHud    = document.getElementById('frameHud');
+const statusDot   = document.getElementById('statusDot');
+const statusLabel = document.getElementById('statusLabel');
+const glosaDisplay  = document.getElementById('glosaDisplay');
+const glosaPlaceholder = document.getElementById('glosaPlaceholder');
+const glosaName   = document.getElementById('glosaName');
+const glosaConf   = document.getElementById('glosaConf');
+const confBarWrap = document.getElementById('confBarWrap');
+const confBarFill = document.getElementById('confBarFill');
+const top3List    = document.getElementById('top3List');
+const top3Label   = document.getElementById('top3Label');
+const triggerRow  = document.getElementById('triggerRow');
+const triggerVal  = document.getElementById('triggerVal');
+const spinner     = document.getElementById('spinner');
+const camPlaceholder = document.getElementById('camPlaceholder');
+const confThreshSlider = document.getElementById('confThresh');
+const trigThreshSlider = document.getElementById('trigThresh');
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Extracción de landmarks — idéntica a extract_landmarks() en Python
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Convierte los resultados de MediaPipe Holistic en un array (133, 3).
+ * Pose: 17 keypoints COCO (subset de los 33 de MP)
+ * Mano izq: índices 91-111 (21 keypoints)
+ * Mano der: índices 112-132 (21 keypoints)
+ */
+function extractLandmarks(results, imgW, imgH) {
+  // (133, 3) aplanado en Float32Array — orden: [x0,y0,v0, x1,y1,v1, ...]
+  const kpts = new Float32Array(N_LM * 3);  // 0-filled
+
+  if (results.poseLandmarks) {
+    MP_POSE_TO_COCO17.forEach((mpIdx, cocoIdx) => {
+      const lm = results.poseLandmarks[mpIdx];
+      if (!lm) return;
+      const base = cocoIdx * 3;
+      kpts[base]     = lm.x * imgW;
+      kpts[base + 1] = lm.y * imgH;
+      kpts[base + 2] = lm.visibility ?? 1.0;
+    });
+  }
+
+  if (results.leftHandLandmarks) {
+    results.leftHandLandmarks.forEach((lm, i) => {
+      const base = (91 + i) * 3;
+      kpts[base]     = lm.x * imgW;
+      kpts[base + 1] = lm.y * imgH;
+      kpts[base + 2] = 1.0;
+    });
+  }
+
+  if (results.rightHandLandmarks) {
+    results.rightHandLandmarks.forEach((lm, i) => {
+      const base = (112 + i) * 3;
+      kpts[base]     = lm.x * imgW;
+      kpts[base + 1] = lm.y * imgH;
+      kpts[base + 2] = 1.0;
+    });
+  }
+
+  return kpts;  // Float32Array(399)
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Preprocesamiento — idéntico a preprocess_and_pad() en Python
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Lista de Float32Array(399) (T frames) →
+ *   { landmarks: number[][], valid: boolean[] }
+ * donde landmarks tiene shape (TMAX, 266) y valid tiene shape (TMAX,).
+ */
+function preprocessAndPad(frames) {
+  const T = Math.min(frames.length, TMAX);
+
+  // Construir seq (T, 133, 3) como arrays JS planos para manipulación
+  // seq[t][lm][coord] — usamos acceso lineal: seq[t * N_LM*3 + lm*3 + c]
+  const seq = new Float32Array(T * N_LM * 3);
+  for (let t = 0; t < T; t++) {
+    seq.set(frames[t], t * N_LM * 3);
+  }
+
+  // Baja confianza (visibility < 0.3) → poner a 0
+  for (let t = 0; t < T; t++) {
+    for (let lm = 0; lm < N_LM; lm++) {
+      const base = t * N_LM * 3 + lm * 3;
+      if (seq[base + 2] < 0.3) {
+        seq[base] = seq[base + 1] = seq[base + 2] = 0;
+      }
+    }
+  }
+
+  // Centrar en punto medio de hombros
+  for (let t = 0; t < T; t++) {
+    const sL = t * N_LM * 3 + S_L * 3;
+    const sR = t * N_LM * 3 + S_R * 3;
+    const midX = (seq[sL] + seq[sR]) / 2;
+    const midY = (seq[sL + 1] + seq[sR + 1]) / 2;
+    for (let lm = 0; lm < N_LM; lm++) {
+      const base = t * N_LM * 3 + lm * 3;
+      seq[base]     -= midX;
+      seq[base + 1] -= midY;
+    }
+  }
+
+  // Escala: distancia hombros → caderas
+  for (let t = 0; t < T; t++) {
+    const sL = t * N_LM * 3 + S_L * 3;
+    const sR = t * N_LM * 3 + S_R * 3;
+    const hL = t * N_LM * 3 + H_L * 3;
+    const hR = t * N_LM * 3 + H_R * 3;
+
+    const smidX = (seq[sL] + seq[sR]) / 2;
+    const smidY = (seq[sL + 1] + seq[sR + 1]) / 2;
+    const hmidX = (seq[hL] + seq[hR]) / 2;
+    const hmidY = (seq[hL + 1] + seq[hR + 1]) / 2;
+
+    const dx = hmidX - smidX;
+    const dy = hmidY - smidY;
+    const scale = Math.max(Math.sqrt(dx * dx + dy * dy), 1e-6);
+
+    for (let lm = 0; lm < N_LM; lm++) {
+      const base = t * N_LM * 3 + lm * 3;
+      seq[base]     /= scale;
+      seq[base + 1] /= scale;
+    }
+  }
+
+  // Aplanar solo x,y → (TMAX, 266), con padding de ceros
+  const landmarks = [];
+  const valid = [];
+
+  for (let t = 0; t < TMAX; t++) {
+    const row = new Array(INPUT_DIM).fill(0);
+    if (t < T) {
+      for (let lm = 0; lm < N_LM; lm++) {
+        const src = t * N_LM * 3 + lm * 3;
+        row[lm * 2]     = seq[src];
+        row[lm * 2 + 1] = seq[src + 1];
+      }
+    }
+    landmarks.push(row);
+    valid.push(t < T);
+  }
+
+  return { landmarks, valid };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Inferencia
+// ─────────────────────────────────────────────────────────────────────────────
+
+async function runInference(frames) {
+  setUIState('INFERRING');
+  const { landmarks, valid } = preprocessAndPad(frames);
+
+  try {
+    const res = await fetch('/infer', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ landmarks, valid }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Error del servidor');
+    displayResult(data);
+  } catch (err) {
+    showToast('Error: ' + err.message);
+    setUIState('IDLE');
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// UI helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+function setUIState(s) {
+  state = s;
+
+  // Botón
+  if (s === 'RECORDING') {
+    btnRecord.classList.add('recording');
+    btnLabel.textContent = 'Detener grabación';
+    recRing.classList.add('active');
+    frameHud.classList.add('visible');
+    statusDot.className = 'status-dot record';
+    statusLabel.textContent = 'Grabando…';
+  } else if (s === 'INFERRING') {
+    btnRecord.classList.remove('recording');
+    btnRecord.disabled = true;
+    btnLabel.textContent = 'Procesando…';
+    recRing.classList.remove('active');
+    frameHud.classList.remove('visible');
+    statusDot.className = 'status-dot';
+    statusLabel.textContent = 'Infiriendo…';
+    // Spinner en display
+    glosaDisplay.className = 'glosa-display inferring';
+    glosaPlaceholder.style.display = 'none';
+    glosaName.style.display = 'none';
+    glosaConf.style.display = 'none';
+    confBarWrap.style.display = 'none';
+    spinner.classList.add('active');
+    top3Label.style.display = 'none';
+    triggerRow.style.display = 'none';
+    top3List.innerHTML = '';
+  } else {
+    btnRecord.classList.remove('recording');
+    btnRecord.disabled = false;
+    btnLabel.textContent = 'Iniciar grabación';
+    recRing.classList.remove('active');
+    frameHud.classList.remove('visible');
+    statusDot.className = 'status-dot ready';
+    statusLabel.textContent = 'Listo';
+    spinner.classList.remove('active');
+  }
+}
+
+function displayResult(data) {
+  const confPct   = (data.conf * 100).toFixed(1);
+  const trigPct   = (data.end_prob * 100).toFixed(1);
+
+  // Main display
+  glosaDisplay.className = 'glosa-display has-result';
+  spinner.classList.remove('active');
+  glosaPlaceholder.style.display = 'none';
+  glosaName.style.display = 'block';
+  glosaName.textContent = data.glosa;
+  glosaConf.style.display = 'block';
+  glosaConf.innerHTML = `Confianza: <b>${confPct}%</b>`;
+  confBarWrap.style.display = 'block';
+  setTimeout(() => { confBarFill.style.width = confPct + '%'; }, 30);
+
+  // Trigger
+  triggerRow.style.display = 'flex';
+  triggerVal.textContent = trigPct + '%';
+  triggerVal.style.color = data.end_prob >= (trigThreshSlider.value / 100)
+    ? 'var(--accent)' : 'var(--muted)';
+
+  // Top-3
+  top3Label.style.display = 'block';
+  top3List.innerHTML = '';
+  (data.top3 || []).forEach(([name, conf], i) => {
+    const pct = (conf * 100).toFixed(1);
+    const item = document.createElement('div');
+    item.className = 'top3-item';
+    item.innerHTML = `
+      <div class="top3-rank">#${i + 1}</div>
+      <div class="top3-item-inner">
+        <div class="top3-bar" style="width:${pct}%"></div>
+        <div class="top3-name">${name}</div>
+        <div class="top3-pct">${pct}%</div>
+      </div>`;
+    top3List.appendChild(item);
+    setTimeout(() => item.classList.add('show'), 50 + i * 80);
+  });
+
+  setUIState('IDLE');
+}
+
+function showToast(msg) {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.classList.add('visible');
+  setTimeout(() => toast.classList.remove('visible'), 3500);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Botón y teclado
+// ─────────────────────────────────────────────────────────────────────────────
+
+function toggleRecording() {
+  if (state === 'IDLE') {
+    recordedFrames = [];
+    setUIState('RECORDING');
+  } else if (state === 'RECORDING') {
+    if (recordedFrames.length < 5) {
+      showToast('Grabación muy corta (< 5 frames)');
+      setUIState('IDLE');
+      return;
+    }
+    const frames = [...recordedFrames];
+    recordedFrames = [];
+    runInference(frames);
+  }
+}
+
+btnRecord.addEventListener('click', toggleRecording);
+document.addEventListener('keydown', e => {
+  if (e.code === 'Space' && state !== 'INFERRING') {
+    e.preventDefault();
+    toggleRecording();
+  }
+});
+
+// Sliders
+confThreshSlider.addEventListener('input', () => {
+  document.getElementById('confThreshVal').textContent = confThreshSlider.value + '%';
+});
+trigThreshSlider.addEventListener('input', () => {
+  document.getElementById('trigThreshVal').textContent = trigThreshSlider.value + '%';
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Dibujar landmarks sobre el canvas
+// ─────────────────────────────────────────────────────────────────────────────
+
+function drawLandmarks(results) {
+  ctx.save();
+  ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
+  ctx.scale(-1, 1);  // mirror para coincidir con el video espejado
+  ctx.translate(-canvasEl.width, 0);
+
+  const w = canvasEl.width, h = canvasEl.height;
+
+  function dot(lm, color, r = 3) {
+    ctx.beginPath();
+    ctx.arc(lm.x * w, lm.y * h, r, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
+  function line(a, b, color) {
+    if (!a || !b) return;
+    ctx.beginPath();
+    ctx.moveTo(a.x * w, a.y * h);
+    ctx.lineTo(b.x * w, b.y * h);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  // Pose (los 17 COCO extraídos)
+  if (results.poseLandmarks) {
+    const pLMs = results.poseLandmarks;
+    MP_POSE_TO_COCO17.forEach(idx => {
+      const lm = pLMs[idx];
+      if (lm && (lm.visibility ?? 1) > 0.3)
+        dot(lm, 'rgba(0,229,160,0.85)', 4);
+    });
+    // Algunas conexiones clave
+    const pairs = [[11,13],[13,15],[12,14],[14,16],[11,12],[11,23],[12,24],[23,24]];
+    pairs.forEach(([a,b]) => line(pLMs[a], pLMs[b], 'rgba(0,229,160,0.35)'));
+  }
+
+  // Manos
+  const handConn = [
+    [0,1],[1,2],[2,3],[3,4],
+    [0,5],[5,6],[6,7],[7,8],
+    [5,9],[9,10],[10,11],[11,12],
+    [9,13],[13,14],[14,15],[15,16],
+    [13,17],[17,18],[18,19],[19,20],[0,17]
+  ];
+
+  function drawHand(lms, color) {
+    if (!lms) return;
+    handConn.forEach(([a, b]) => line(lms[a], lms[b], color));
+    lms.forEach(lm => dot(lm, color, 2.5));
+  }
+  drawHand(results.leftHandLandmarks,  'rgba(124,92,252,0.85)');
+  drawHand(results.rightHandLandmarks, 'rgba(255,77,109,0.85)');
+
+  ctx.restore();
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// MediaPipe Holistic
+// ─────────────────────────────────────────────────────────────────────────────
+
+const holistic = new Holistic({
+  locateFile: file =>
+    `https://cdn.jsdelivr.net/npm/@mediapipe/holistic/${file}`,
+});
+
+holistic.setOptions({
+  modelComplexity: 1,
+  smoothLandmarks: true,
+  minDetectionConfidence: 0.5,
+  minTrackingConfidence: 0.5,
+});
+
+holistic.onResults(results => {
+  lastResults = results;
+
+  // Sincronizar tamaño del canvas
+  if (canvasEl.width !== videoEl.videoWidth || canvasEl.height !== videoEl.videoHeight) {
+    canvasEl.width  = videoEl.videoWidth;
+    canvasEl.height = videoEl.videoHeight;
+  }
+
+  drawLandmarks(results);
+
+  // Grabar frame si estamos en modo grabación
+  if (state === 'RECORDING') {
+    const kpts = extractLandmarks(results, videoEl.videoWidth, videoEl.videoHeight);
+    recordedFrames.push(kpts);
+    frameHud.textContent = `⏺ ${recordedFrames.length} / ${TMAX}`;
+
+    // Auto-parar al llegar a TMAX
+    if (recordedFrames.length >= TMAX) {
+      const frames = [...recordedFrames];
+      recordedFrames = [];
+      runInference(frames);
+    }
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Cámara
+// ─────────────────────────────────────────────────────────────────────────────
+
+const camera = new Camera(videoEl, {
+  onFrame: async () => {
+    await holistic.send({ image: videoEl });
+  },
+  width: 1280,
+  height: 720,
+});
+
+camera.start().then(() => {
+  videoEl.classList.add('visible');
+  camPlaceholder.classList.add('hidden');
+  btnRecord.disabled = false;
+  statusDot.className = 'status-dot ready';
+  statusLabel.textContent = 'Listo';
+}).catch(err => {
+  statusLabel.textContent = 'Error de cámara';
+  showToast('No se pudo acceder a la cámara: ' + err.message);
+});
+</script>
+</body>
+</html>
