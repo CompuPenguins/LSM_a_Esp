@@ -4,3 +4,4 @@ lsm_dataset/
 MSLwords1/
 *.csv
 *.safetensors
+__pycache__/
