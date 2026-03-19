@@ -1,947 +1,1309 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<title>LSM · Traductor de Lengua de Señas</title>
-<link rel="preconnect" href="https://fonts.googleapis.com" />
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;1,9..144,400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
-<style>
-/* ── Design tokens ────────────────────────────────────────────────── */
-:root {
-  --bg:        #0f1117;
-  --surface:   #181c27;
-  --border:    #2a2f3d;
-  --accent:    #e8a045;
-  --accent2:   #3ecfb0;
-  --text:      #e8e4db;
-  --muted:     #7a8099;
-  --bubble-out:#1e2538;
-  --bubble-in: #1b2b28;
-  --danger:    #e05c5c;
-  --radius:    18px;
-  --font-serif: 'Fraunces', Georgia, serif;
-  --font-sans:  'DM Sans', sans-serif;
-}
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0"/>
+  <title>SeñaLingua</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;1,9..144,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+  <style>
+    /* ── Design tokens (del esquema doc 5) ─────────────────────────────── */
+    :root {
+      --bg:        #0f1117;
+      --surface:   #181c27;
+      --border:    #2a2f3d;
+      --accent:    #e8a045;
+      --accent2:   #3ecfb0;
+      --text:      #e8e4db;
+      --muted:     #7a8099;
+      --danger:    #e05c5c;
+      --radius:    18px;
+      --font-serif: 'Fraunces', Georgia, serif;
+      --font-sans:  'DM Sans', sans-serif;
+    }
 
-/* ── Reset ──────────────────────────────────────────────────────────── */
-*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-html, body { height: 100%; overflow: hidden; }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-body {
-  background: var(--bg);
-  color: var(--text);
-  font-family: var(--font-sans);
-  display: flex;
-  flex-direction: column;
-  height: 100dvh;
-}
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100dvh;
+      max-width: 430px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+    }
 
-/* ── Header ─────────────────────────────────────────────────────────── */
-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 14px 24px;
-  border-bottom: 1px solid var(--border);
-  background: var(--surface);
-  flex-shrink: 0;
-  gap: 12px;
-}
+    /* ── SCROLLBAR ── */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
 
-.logo {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-}
-.logo-hand { font-size: 1.5rem; line-height: 1; }
-.logo-text {
-  font-family: var(--font-serif);
-  font-size: 1.35rem;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  color: var(--accent);
-}
-.logo-sub {
-  font-size: 0.7rem;
-  color: var(--muted);
-  font-weight: 300;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
+    /* ── HEADER ── */
+    header {
+      background: var(--surface);
+      padding: 14px 20px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+      position: sticky; top: 0; z-index: 50;
+      flex-shrink: 0;
+    }
+    .logo {
+      display: flex; align-items: baseline; gap: 8px;
+    }
+    .logo-hand { font-size: 1.4rem; line-height: 1; }
+    .logo-text {
+      font-family: var(--font-serif);
+      font-size: 1.25rem; font-weight: 600;
+      letter-spacing: -0.02em; color: var(--accent);
+    }
+    .logo-sub {
+      font-size: 0.65rem; color: var(--muted);
+      font-weight: 300; letter-spacing: 0.08em;
+      text-transform: uppercase;
+    }
+    .header-btn {
+      width: 34px; height: 34px; border-radius: 10px;
+      background: var(--bg); border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1rem; cursor: pointer; color: var(--muted);
+      transition: border-color .2s;
+    }
+    .header-btn:hover { border-color: var(--accent); }
 
-/* sign-panel toggle button in header */
-#btn-toggle-sign {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--muted);
-  padding: 7px 14px;
-  border-radius: 30px;
-  cursor: pointer;
-  font-family: var(--font-sans);
-  font-size: 0.75rem;
-  letter-spacing: 0.05em;
-  transition: all .2s;
-}
-#btn-toggle-sign:hover { border-color: var(--accent2); color: var(--accent2); }
-#btn-toggle-sign.active { border-color: var(--accent2); color: var(--accent2); background: rgba(62,207,176,.08); }
+    /* ── CONTENT ── */
+    .content {
+      flex: 1; overflow-y: auto;
+      padding: 16px; padding-bottom: 96px;
+      display: flex; flex-direction: column; gap: 12px;
+    }
 
-/* ── Layout wrapper ─────────────────────────────────────────────────── */
-.layout {
-  display: flex;
-  flex: 1;
-  overflow: hidden;
-}
+    /* ── GLOSA LABEL (bilingual) ── */
+    /* Every visible text label also shows its glosa above */
+    .gl {
+      display: flex; flex-direction: column; gap: 2px;
+    }
+    .gl-glosa {
+      font-size: 0.62rem; font-weight: 700; letter-spacing: 0.9px;
+      text-transform: uppercase; color: var(--accent2);
+      font-family: var(--font-sans);
+    }
+    .gl-text {
+      font-size: inherit; color: inherit; line-height: inherit;
+    }
 
-/* ── Chat panel ─────────────────────────────────────────────────────── */
-.chat-panel {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
-}
+    /* ── ROLE SELECTOR ── */
+    .role-screen {
+      display: flex; flex-direction: column; gap: 14px; padding-top: 6px;
+    }
+    .role-header {
+      text-align: center; padding: 8px 0 2px;
+    }
+    .role-header h2 {
+      font-family: var(--font-serif);
+      font-size: 1.15rem; font-weight: 600;
+      color: var(--text); margin-bottom: 4px;
+    }
+    .role-header .glosa-sub {
+      font-size: 0.7rem; font-weight: 700; letter-spacing: 1px;
+      color: var(--accent2); text-transform: uppercase; margin-bottom: 4px;
+    }
+    .role-header p { font-size: 0.8rem; color: var(--muted); line-height: 1.5; }
 
-/* messages list */
-.messages {
-  flex: 1;
-  overflow-y: auto;
-  padding: 28px 20px 12px;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  scroll-behavior: smooth;
-}
-.messages::-webkit-scrollbar { width: 4px; }
-.messages::-webkit-scrollbar-track { background: transparent; }
-.messages::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+    .role-card {
+      background: var(--surface);
+      border-radius: var(--radius);
+      padding: 18px 16px; cursor: pointer;
+      border: 2px solid var(--border);
+      transition: all 0.2s;
+      display: flex; align-items: center; gap: 14px;
+    }
+    .role-card:hover { border-color: var(--accent); }
+    .role-card:active { transform: scale(0.98); }
+    .role-card.green:hover { border-color: var(--accent2); }
 
-/* empty state */
-.empty-state {
-  margin: auto;
-  text-align: center;
-  color: var(--muted);
-  pointer-events: none;
-  user-select: none;
-}
-.empty-state .big-hand { font-size: 3.5rem; margin-bottom: 12px; opacity: .5; }
-.empty-state p { font-family: var(--font-serif); font-size: 1.1rem; font-style: italic; }
-.empty-state small { font-size: 0.75rem; margin-top: 6px; display: block; }
+    .role-icon {
+      width: 54px; height: 54px; border-radius: 14px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1.7rem; flex-shrink: 0;
+    }
+    .role-icon.amber { background: rgba(232,160,69,.15); }
+    .role-icon.teal  { background: rgba(62,207,176,.12); }
 
-/* message rows */
-.msg-row {
-  display: flex;
-  flex-direction: column;
-  max-width: 72%;
-  animation: fadeUp .25s ease both;
-}
-.msg-row.outgoing { align-self: flex-end; align-items: flex-end; }
-.msg-row.incoming { align-self: flex-start; align-items: flex-start; }
+    .role-text { flex: 1; }
+    .role-text .glosa-tag {
+      font-size: 0.6rem; font-weight: 700; letter-spacing: 0.9px;
+      text-transform: uppercase; color: var(--accent2); margin-bottom: 3px;
+    }
+    .role-text h3 { font-size: 0.95rem; font-weight: 600; margin-bottom: 3px; color: var(--text); }
+    .role-text p  { font-size: 0.76rem; color: var(--muted); line-height: 1.45; }
+    .role-arrow   { color: var(--muted); font-size: 1.1rem; flex-shrink: 0; }
 
-@keyframes fadeUp {
-  from { opacity: 0; transform: translateY(10px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
+    /* ── BACK BAR ── */
+    .back-bar {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--surface); border-radius: 14px;
+      padding: 10px 14px; cursor: pointer;
+      font-size: 0.83rem; font-weight: 600; color: var(--muted);
+      border: 1px solid var(--border); width: 100%; text-align: left;
+      transition: border-color .2s;
+    }
+    .back-bar:hover { color: var(--text); border-color: var(--accent); }
+    .flow-badge {
+      margin-left: auto;
+      font-size: 0.68rem; font-weight: 700; letter-spacing: 0.7px;
+      text-transform: uppercase; color: var(--accent);
+      background: rgba(232,160,69,.12);
+      padding: 3px 9px; border-radius: 20px;
+    }
+    .flow-badge.teal { color: var(--accent2); background: rgba(62,207,176,.1); }
 
-/* direction label */
-.msg-label {
-  font-size: 0.65rem;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--muted);
-  margin-bottom: 5px;
-  padding: 0 4px;
-}
-.msg-row.outgoing .msg-label { color: var(--accent); }
-.msg-row.incoming .msg-label { color: var(--accent2); }
+    /* ── INPUT TABS ── */
+    .input-tabs {
+      display: flex; background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px; padding: 4px; gap: 4px;
+    }
+    .tab-btn {
+      flex: 1; padding: 10px 8px; border: none;
+      border-radius: 10px; font-family: var(--font-sans);
+      cursor: pointer; transition: all 0.2s;
+      display: flex; flex-direction: column;
+      align-items: center; gap: 1px; background: transparent;
+    }
+    .tab-btn .tb-glosa {
+      font-size: 0.56rem; font-weight: 700; letter-spacing: 0.8px;
+      text-transform: uppercase; color: var(--muted);
+    }
+    .tab-btn .tb-label {
+      font-size: 0.8rem; font-weight: 600; color: var(--muted);
+    }
+    .tab-btn.active { background: var(--accent); }
+    .tab-btn.active .tb-glosa,
+    .tab-btn.active .tb-label { color: #0f1117; }
+    .tab-btn.active.teal { background: var(--accent2); }
 
-/* bubble */
-.bubble {
-  padding: 12px 16px;
-  border-radius: var(--radius);
-  font-size: 0.95rem;
-  line-height: 1.55;
-  word-break: break-word;
-  position: relative;
-}
-.msg-row.outgoing .bubble {
-  background: var(--bubble-out);
-  border: 1px solid #2e3550;
-  border-bottom-right-radius: 5px;
-}
-.msg-row.incoming .bubble {
-  background: var(--bubble-in);
-  border: 1px solid #1f3a35;
-  border-bottom-left-radius: 5px;
-}
-.bubble.loading {
-  color: var(--muted);
-  font-style: italic;
-}
-.bubble.error { color: var(--danger); border-color: rgba(224,92,92,.3); }
+    /* ── CARD ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden;
+    }
+    .card-label {
+      padding: 12px 16px 0;
+      display: flex; flex-direction: column; gap: 1px;
+    }
+    .card-label .glosa-tag {
+      font-size: 0.6rem; font-weight: 700; letter-spacing: 0.9px;
+      text-transform: uppercase; color: var(--accent2);
+    }
+    .card-label .label-text {
+      font-size: 0.72rem; font-weight: 600;
+      text-transform: uppercase; letter-spacing: 0.7px; color: var(--muted);
+    }
 
-/* typing dots */
-.dots span {
-  display: inline-block;
-  width: 6px; height: 6px;
-  background: var(--muted);
-  border-radius: 50%;
-  margin: 0 2px;
-  animation: blink 1.2s infinite;
-}
-.dots span:nth-child(2) { animation-delay: .2s; }
-.dots span:nth-child(3) { animation-delay: .4s; }
-@keyframes blink {
-  0%, 80%, 100% { opacity: .2; }
-  40%           { opacity: 1; }
-}
+    /* ── TEXTAREA ── */
+    .input-area {
+      width: 100%; min-height: 100px; border: none; outline: none;
+      padding: 10px 16px 12px; font-family: var(--font-sans);
+      font-size: 0.98rem; color: var(--text);
+      resize: none; background: transparent; caret-color: var(--accent);
+      line-height: 1.6;
+    }
+    .input-area::placeholder { color: var(--muted); opacity: 0.5; }
 
-/* ── Composer ────────────────────────────────────────────────────────── */
-.composer {
-  flex-shrink: 0;
-  padding: 14px 20px 20px;
-  border-top: 1px solid var(--border);
-  background: var(--surface);
-}
+    .input-actions {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px; border-top: 1px solid var(--border);
+    }
+    .action-left { display: flex; gap: 8px; }
+    .sm-btn {
+      width: 34px; height: 34px; border-radius: 9px;
+      border: 1px solid var(--border); background: var(--bg);
+      font-size: 0.95rem; display: flex; align-items: center; justify-content: center;
+      cursor: pointer; color: var(--muted); transition: border-color .2s;
+    }
+    .sm-btn:hover { border-color: var(--accent); }
 
-/* direction pill selector */
-.dir-selector {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
-}
-.dir-btn {
-  flex: 1;
-  padding: 8px 14px;
-  border: 1px solid var(--border);
-  border-radius: 30px;
-  background: transparent;
-  color: var(--muted);
-  font-family: var(--font-sans);
-  font-size: 0.78rem;
-  letter-spacing: 0.04em;
-  cursor: pointer;
-  transition: all .2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  white-space: nowrap;
-}
-.dir-btn:hover { border-color: var(--accent); color: var(--accent); }
-.dir-btn.selected {
-  background: var(--accent);
-  border-color: var(--accent);
-  color: #0f1117;
-  font-weight: 500;
-}
-.dir-btn.selected .arrow { opacity: 1; }
-.dir-btn.selected.lsm-dir {
-  background: var(--accent2);
-  border-color: var(--accent2);
-}
+    .translate-pill {
+      background: var(--accent); color: #0f1117; border: none;
+      border-radius: 20px; padding: 9px 20px;
+      font-family: var(--font-sans); font-weight: 600; font-size: 0.85rem;
+      cursor: pointer; transition: opacity .2s;
+      display: flex; flex-direction: column; align-items: center; gap: 1px;
+    }
+    .translate-pill .pill-glosa {
+      font-size: 0.55rem; font-weight: 700; letter-spacing: 0.8px;
+      text-transform: uppercase; opacity: 0.7;
+    }
+    .translate-pill:active { opacity: 0.8; }
+    .translate-pill.teal { background: var(--accent2); }
 
-/* input row */
-.input-row {
-  display: flex;
-  gap: 10px;
-  align-items: flex-end;
-}
+    /* ── CAMERA ── */
+    .camera-view {
+      width: 100%; aspect-ratio: 4/3;
+      background: #0a0c11;
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 10px; position: relative; overflow: hidden;
+    }
+    .cam-placeholder {
+      color: var(--muted); font-size: 0.8rem;
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      text-align: center;
+    }
+    .cam-placeholder .big { font-size: 2.8rem; opacity: .3; }
+    .cam-placeholder .cp-glosa {
+      font-size: 0.6rem; font-weight: 700; letter-spacing: 0.9px;
+      color: var(--accent2); text-transform: uppercase;
+    }
+    .scan-line {
+      position: absolute; left: 0; right: 0; height: 2px;
+      background: linear-gradient(90deg, transparent, var(--accent2), transparent);
+      opacity: 0.35; top: 35%;
+    }
+    .cam-corner { position: absolute; width: 22px; height: 22px; border-color: rgba(62,207,176,.5); border-style: solid; }
+    .cc-tl { top:10px; left:10px; border-width:2px 0 0 2px; }
+    .cc-tr { top:10px; right:10px; border-width:2px 2px 0 0; }
+    .cc-bl { bottom:10px; left:10px; border-width:0 0 2px 2px; }
+    .cc-br { bottom:10px; right:10px; border-width:0 2px 2px 0; }
 
-textarea#msg-input {
-  flex: 1;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  color: var(--text);
-  font-family: var(--font-sans);
-  font-size: 0.95rem;
-  padding: 12px 16px;
-  resize: none;
-  min-height: 48px;
-  max-height: 160px;
-  line-height: 1.5;
-  overflow-y: auto;
-  transition: border-color .2s;
-  outline: none;
-}
-textarea#msg-input:focus { border-color: var(--accent); }
-textarea#msg-input::placeholder { color: var(--muted); }
+    .camera-bar { padding: 12px 14px; display: flex; gap: 10px; }
+    .cam-start {
+      flex: 1; padding: 11px; background: var(--accent2); color: #0f1117;
+      border: none; border-radius: 12px; font-family: var(--font-sans);
+      font-size: 0.85rem; font-weight: 600; cursor: pointer;
+      display: flex; flex-direction: column; align-items: center; gap: 1px;
+    }
+    .cam-start .cs-glosa {
+      font-size: 0.55rem; font-weight: 700; letter-spacing: 0.7px;
+      text-transform: uppercase; opacity: 0.7;
+    }
+    .cam-rec {
+      padding: 11px 14px;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 12px; font-family: var(--font-sans);
+      font-size: 0.82rem; font-weight: 600; color: var(--muted);
+      cursor: pointer; white-space: nowrap;
+      display: flex; align-items: center; gap: 5px;
+    }
+    .cam-rec:disabled { opacity: .35; cursor: not-allowed; }
+    .cam-rec.recording { border-color: var(--danger); color: var(--danger); }
+    .rec-dot {
+      width: 7px; height: 7px; border-radius: 50%;
+      background: var(--danger);
+      animation: blink-dot 1.1s ease infinite;
+    }
+    @keyframes blink-dot { 0%,100%{opacity:1} 50%{opacity:.2} }
 
-#btn-send {
-  flex-shrink: 0;
-  width: 48px; height: 48px;
-  border-radius: 50%;
-  background: var(--accent);
-  border: none;
-  cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  transition: transform .15s, background .2s, opacity .2s;
-}
-#btn-send:hover { transform: scale(1.08); }
-#btn-send:active { transform: scale(0.95); }
-#btn-send:disabled { opacity: .4; cursor: not-allowed; transform: none; }
-#btn-send svg { width: 20px; height: 20px; fill: #0f1117; }
+    /* ── MIC SECTION ── */
+    .mic-section {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px 18px;
+      display: flex; flex-direction: column; align-items: center; gap: 12px;
+    }
+    .mic-big {
+      width: 88px; height: 88px; border-radius: 50%;
+      background: rgba(232,160,69,.1);
+      border: 2px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 2.2rem; cursor: pointer;
+      transition: all 0.2s;
+    }
+    .mic-big:hover { background: rgba(232,160,69,.2); border-color: var(--accent); }
+    .mic-big.recording {
+      background: rgba(224,92,92,.15);
+      border-color: var(--danger);
+      animation: mic-pulse 1.2s ease infinite;
+    }
+    @keyframes mic-pulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(224,92,92,.35); }
+      50%       { box-shadow: 0 0 0 14px rgba(224,92,92,0); }
+    }
+    .mic-label-wrap { text-align: center; }
+    .mic-glosa {
+      font-size: 0.6rem; font-weight: 700; letter-spacing: 0.9px;
+      text-transform: uppercase; color: var(--accent2); margin-bottom: 2px;
+    }
+    .mic-label { font-size: 0.82rem; color: var(--muted); }
+    .mic-label.recording { color: var(--danger); }
+    .mic-or {
+      font-size: 0.72rem; color: var(--muted);
+      display: flex; align-items: center; gap: 8px; width: 100%;
+    }
+    .mic-or::before, .mic-or::after {
+      content:''; flex:1; height:1px; background: var(--border);
+    }
+    .upload-audio-btn {
+      width: 100%; padding: 11px;
+      border: 1px dashed var(--border); background: transparent;
+      border-radius: 12px; font-family: var(--font-sans);
+      font-size: 0.83rem; font-weight: 600; color: var(--muted); cursor: pointer;
+      transition: all 0.2s; display: flex; flex-direction: column;
+      align-items: center; gap: 2px;
+    }
+    .upload-audio-btn .ub-glosa {
+      font-size: 0.57rem; font-weight: 700; letter-spacing: 0.8px;
+      text-transform: uppercase; color: var(--accent2);
+    }
+    .upload-audio-btn:hover { border-color: var(--accent2); color: var(--text); }
+    #audio-file-input { display: none; }
 
-#btn-mic {
-  flex-shrink: 0;
-  width: 48px; height: 48px;
-  border-radius: 50%;
-  background: transparent;
-  border: 1px solid var(--border);
-  color: var(--muted);
-  cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  transition: all .2s;
-}
-#btn-mic:hover { border-color: var(--accent); color: var(--accent); }
-#btn-mic.listening {
-  background: rgba(224,92,92,.15);
-  border-color: var(--danger);
-  color: var(--danger);
-  animation: mic-pulse 1.4s ease infinite;
-}
-#btn-mic svg { width: 18px; height: 18px; fill: currentColor; }
-@keyframes mic-pulse {
-  0%, 100% { box-shadow: 0 0 0 0 rgba(224,92,92,.4); }
-  50%       { box-shadow: 0 0 0 7px rgba(224,92,92,0); }
-}
-#stt-unsupported { display:none; font-size:0.7rem; color:var(--danger); text-align:center; margin-top:4px; }
+    /* ── STT PREVIEW ── */
+    .output-area { padding: 12px 16px; }
+    .text-result {
+      font-size: 0.98rem; line-height: 1.65; color: var(--text);
+    }
 
-/* ── Sign panel (collapsible, side drawer) ──────────────────────────── */
-.sign-panel {
-  width: 0;
-  overflow: hidden;
-  transition: width .35s cubic-bezier(.4,0,.2,1);
-  border-left: none;
-  background: var(--surface);
-  display: flex;
-  flex-direction: column;
-}
-.sign-panel.open {
-  width: 340px;
-  border-left: 1px solid var(--border);
-}
+    /* ── RESULT BLOCK ── */
+    .result-block {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden;
+      display: none;
+    }
+    .result-block.visible { display: block; }
 
-.sign-inner {
-  width: 340px;
-  height: 100%;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  padding: 20px;
-  gap: 14px;
-}
+    .result-section {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .result-section:last-of-type { border-bottom: none; }
 
-.sign-title {
-  font-family: var(--font-serif);
-  font-size: 1rem;
-  font-weight: 600;
-  color: var(--accent2);
-  letter-spacing: -0.01em;
-  padding-bottom: 10px;
-  border-bottom: 1px solid var(--border);
-}
+    .result-section-label {
+      display: flex; flex-direction: column; gap: 1px; margin-bottom: 10px;
+    }
+    .rsl-glosa {
+      font-size: 0.6rem; font-weight: 700; letter-spacing: 0.9px;
+      text-transform: uppercase; color: var(--accent2);
+    }
+    .rsl-text {
+      font-size: 0.7rem; font-weight: 600; letter-spacing: 0.7px;
+      text-transform: uppercase; color: var(--muted);
+    }
 
-#video-container {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 4/3;
-  background: #0a0c11;
-  border-radius: 12px;
-  overflow: hidden;
-  border: 1px solid var(--border);
-}
-#webcam { width: 100%; height: 100%; object-fit: cover; transform: scaleX(-1); }
-#overlay-canvas {
-  position: absolute; inset: 0;
-  width: 100%; height: 100%;
-  pointer-events: none;
-}
-.cam-off-msg {
-  position: absolute; inset: 0;
-  display: flex; align-items: center; justify-content: center;
-  flex-direction: column; gap: 8px;
-  color: var(--muted); font-size: 0.8rem; text-align: center;
-}
-.cam-off-msg span { font-size: 2rem; }
+    /* Avatar */
+    .avatar-box {
+      width: 100%; aspect-ratio: 4/3;
+      background: #0a0c11;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      gap: 8px; position: relative; overflow: hidden;
+    }
+    .avatar-box::after {
+      content:''; position: absolute; left:0; right:0; height:2px;
+      background: linear-gradient(90deg, transparent, var(--accent2), transparent);
+      opacity: 0.2; top:40%;
+    }
+    .avatar-placeholder {
+      color: var(--muted); font-size: 0.78rem;
+      display: flex; flex-direction: column; align-items: center; gap: 6px;
+      text-align: center; z-index: 1;
+    }
+    .avatar-placeholder .big { font-size: 3rem; opacity: .2; }
+    .avatar-placeholder .ap-glosa {
+      font-size: 0.6rem; font-weight: 700; letter-spacing: 0.9px;
+      color: var(--accent2); text-transform: uppercase;
+    }
+    .avatar-controls {
+      display: flex; gap: 8px; padding: 10px 14px;
+      border-top: 1px solid var(--border);
+    }
+    .play-btn {
+      flex: 1; padding: 10px;
+      background: var(--accent2); color: #0f1117; border: none;
+      border-radius: 11px; font-family: var(--font-sans);
+      font-size: 0.83rem; font-weight: 600; cursor: pointer;
+      display: flex; flex-direction: column; align-items: center; gap: 1px;
+    }
+    .play-btn .pb-glosa {
+      font-size: 0.55rem; font-weight: 700; letter-spacing: 0.7px;
+      text-transform: uppercase; opacity: 0.7;
+    }
+    .play-btn.amber { background: var(--accent); }
+    .speed-btn {
+      padding: 10px 14px;
+      background: var(--bg); border: 1px solid var(--border);
+      border-radius: 11px; font-family: var(--font-sans);
+      font-size: 0.8rem; font-weight: 600; color: var(--muted); cursor: pointer;
+    }
 
-/* sign controls */
-.sign-controls {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-.ctrl-btn {
-  flex: 1;
-  padding: 9px 12px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text);
-  font-family: var(--font-sans);
-  font-size: 0.78rem;
-  cursor: pointer;
-  transition: all .2s;
-  white-space: nowrap;
-}
-.ctrl-btn:hover { border-color: var(--accent2); color: var(--accent2); }
-.ctrl-btn.primary {
-  background: var(--accent2);
-  border-color: var(--accent2);
-  color: #0f1117;
-  font-weight: 500;
-}
-.ctrl-btn.danger { border-color: var(--danger); color: var(--danger); }
-.ctrl-btn:disabled { opacity: .4; cursor: not-allowed; }
+    /* Glosa chips */
+    .glosa-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
+    .glosa-chip {
+      background: rgba(232,160,69,.12); color: var(--accent);
+      font-weight: 700; font-size: 0.8rem;
+      padding: 5px 11px; border-radius: 20px; letter-spacing: 0.5px;
+      border: 1px solid rgba(232,160,69,.25);
+    }
+    .glosa-chip.teal {
+      background: rgba(62,207,176,.1); color: var(--accent2);
+      border-color: rgba(62,207,176,.2);
+    }
 
-/* recording indicator */
-.rec-dot {
-  display: inline-block; width: 8px; height: 8px;
-  border-radius: 50%; background: var(--danger);
-  margin-right: 5px;
-  animation: pulse 1.2s infinite;
-}
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: .3; }
-}
+    /* Result actions */
+    .result-actions {
+      display: flex; gap: 8px;
+      padding: 10px 14px; border-top: 1px solid var(--border);
+    }
+    .out-btn {
+      flex: 1; padding: 9px;
+      border: 1px solid var(--border); background: var(--bg);
+      border-radius: 10px; font-family: var(--font-sans);
+      cursor: pointer; color: var(--muted);
+      display: flex; flex-direction: column; align-items: center; gap: 1px;
+      transition: border-color .2s;
+    }
+    .out-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .out-btn .ob-glosa {
+      font-size: 0.52rem; font-weight: 700; letter-spacing: 0.7px;
+      text-transform: uppercase; color: var(--accent2);
+    }
+    .out-btn .ob-label { font-size: 0.75rem; font-weight: 600; }
 
-/* sign result card */
-.sign-result {
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 14px;
-  display: none;
-  flex-direction: column;
-  gap: 8px;
-}
-.sign-result.visible { display: flex; }
-.sign-glosa {
-  font-family: var(--font-serif);
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: var(--accent2);
-}
-.sign-conf { font-size: 0.75rem; color: var(--muted); }
-.conf-bar {
-  height: 4px; background: var(--border); border-radius: 4px; overflow: hidden;
-}
-.conf-fill {
-  height: 100%; background: var(--accent2); border-radius: 4px;
-  transition: width .4s;
-}
-.top3-list { display: flex; flex-direction: column; gap: 4px; }
-.top3-item {
-  display: flex; justify-content: space-between; align-items: center;
-  font-size: 0.78rem; color: var(--muted);
-}
-.top3-item .lbl { font-weight: 500; color: var(--text); }
-.top3-item .pct { color: var(--accent); }
+    /* ── BOTTOM NAV ── */
+    nav {
+      position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+      width: 100%; max-width: 430px;
+      background: var(--surface); border-top: 1px solid var(--border);
+      display: flex; padding: 8px 10px 16px; gap: 4px; z-index: 50;
+    }
+    .nav-btn {
+      flex: 1; display: flex; flex-direction: column;
+      align-items: center; gap: 3px; padding: 8px 4px;
+      border: none; background: transparent;
+      border-radius: 12px; cursor: pointer; transition: background 0.2s;
+    }
+    .nav-btn .nav-icon { font-size: 1.3rem; }
+    .nav-btn .nav-glosa {
+      font-family: var(--font-sans);
+      font-size: 0.5rem; font-weight: 700; letter-spacing: 0.8px;
+      text-transform: uppercase; color: var(--accent2);
+    }
+    .nav-btn .nav-label {
+      font-family: var(--font-sans);
+      font-size: 0.62rem; font-weight: 600; color: var(--muted);
+    }
+    .nav-btn.active { background: rgba(232,160,69,.1); }
+    .nav-btn.active .nav-label { color: var(--accent); }
 
-/* btn to insert sign result into chat */
-#btn-insert-sign {
-  padding: 10px;
-  border-radius: 10px;
-  border: 1px dashed var(--accent2);
-  background: transparent;
-  color: var(--accent2);
-  font-family: var(--font-sans);
-  font-size: 0.8rem;
-  cursor: pointer;
-  width: 100%;
-  transition: all .2s;
-  display: none;
-}
-#btn-insert-sign.visible { display: block; }
-#btn-insert-sign:hover { background: rgba(62,207,176,.08); }
+    /* ── VIEWS ── */
+    .view { display: none; }
+    .view.active { display: flex; flex-direction: column; gap: 12px; }
+    .sub-view { display: none; }
+    .sub-view.active { display: flex; flex-direction: column; gap: 12px; }
+    .hidden { display: none !important; }
 
-/* mirror toggle */
-.mirror-row {
-  display: flex; align-items: center; gap: 8px;
-  font-size: 0.78rem; color: var(--muted);
-  cursor: pointer;
-  user-select: none;
-}
-.mirror-row input[type=checkbox] { accent-color: var(--accent2); }
-
-/* ── Scrollbar global ────────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
-
-/* ── Responsive ──────────────────────────────────────────────────────── */
-@media (max-width: 640px) {
-  .sign-panel.open { width: 100%; border-left: none; border-top: 1px solid var(--border); }
-  .layout { flex-direction: column; }
-}
-</style>
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .view.active { animation: fadeUp .25s ease both; }
+  </style>
 </head>
 <body>
 
-<!-- ════════════════════════ HEADER ════════════════════════ -->
-<header>
-  <div class="logo">
-    <span class="logo-hand">🤟</span>
-    <div>
-      <div class="logo-text">LSM</div>
-      <div class="logo-sub">Lengua de Señas Mexicana</div>
+  <header>
+    <div class="logo">
+      <span class="logo-hand">🤟</span>
+      <div>
+        <div class="logo-text">SeñaLingua</div>
+        <div class="logo-sub">LSM · Comunicación inclusiva</div>
+      </div>
     </div>
-  </div>
+    <button class="header-btn" title="Ajustes">⚙️</button>
+  </header>
 
-  <button id="btn-toggle-sign" title="Reconocimiento de señas">
-    <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"
-         fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M15 10l4.553-2.07A1 1 0 0 1 21 8.82V14a1 1 0 0 1-1.447.894L15 13M3 8a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
-    </svg>
-    Cámara
-  </button>
-</header>
+  <div class="content">
 
-<!-- ════════════════════════ LAYOUT ════════════════════════ -->
-<div class="layout">
+    <!-- ══════════════════ VIEW: INICIO ══════════════════ -->
+    <div id="view-inicio" class="view active">
+      <div class="role-screen">
 
-  <!-- ─── CHAT PANEL ──────────────────────────────────────── -->
-  <div class="chat-panel">
-    <div class="messages" id="messages">
-      <div class="empty-state" id="empty-state">
-        <div class="big-hand">🤟</div>
-        <p>Elige una dirección y empieza a traducir</p>
-        <small>Español ↔ Lengua de Señas Mexicana</small>
+        <div class="role-header">
+          <div class="glosa-sub">YO · QUERER · COMUNICAR</div>
+          <h2>¿Quién usa la app?</h2>
+          <p>Elige tu perfil para comunicarte</p>
+        </div>
+
+        <!-- PERSONA SORDA -->
+        <div class="role-card" onclick="showFlow('sordo')">
+          <div class="role-icon amber">🤟</div>
+          <div class="role-text">
+            <div class="glosa-tag">YO · SORDO · SEÑA</div>
+            <h3>Soy persona sorda</h3>
+            <p>Graba tu seña o escribe en glosa. La app lo traduce a español.</p>
+          </div>
+          <span class="role-arrow">›</span>
+        </div>
+
+        <!-- PERSONA OYENTE -->
+        <div class="role-card green" onclick="showFlow('oyente')">
+          <div class="role-icon teal">🗣️</div>
+          <div class="role-text">
+            <div class="glosa-tag">YO · OÍR · HABLAR</div>
+            <h3>Soy persona oyente</h3>
+            <p>Habla o escribe en español. La app lo muestra en señas y glosa.</p>
+          </div>
+          <span class="role-arrow">›</span>
+        </div>
+
       </div>
     </div>
 
-    <!-- Composer -->
-    <div class="composer">
-      <div class="dir-selector">
-        <button class="dir-btn selected" id="btn-esp" data-dir="esp_to_lsm">
-          🇲🇽 Español → LSM
+    <!-- ══════════════════ VIEW: SORDO ══════════════════ -->
+    <div id="view-sordo" class="view">
+
+      <button class="back-bar" onclick="goHome()">
+        ← <span style="color:var(--accent2)">REGRESAR</span> &nbsp; VOLVER
+        <span class="flow-badge">🤟 SEÑA → ESPAÑOL</span>
+      </button>
+
+      <!-- Input tabs -->
+      <div class="input-tabs">
+        <button class="tab-btn active" id="stab-texto" onclick="setSordoTab('texto')">
+          <span class="tb-glosa">ESCRIBIR · GLOSA</span>
+          <span class="tb-label">✏️ Escribir</span>
         </button>
-        <button class="dir-btn lsm-dir" id="btn-lsm" data-dir="lsm_to_esp">
-          🤟 LSM → Español
+        <button class="tab-btn" id="stab-cam" onclick="setSordoTab('camara')">
+          <span class="tb-glosa">GRABAR · SEÑA</span>
+          <span class="tb-label">📷 Cámara</span>
         </button>
       </div>
-      <div class="input-row">
-        <textarea id="msg-input" rows="1"
-          placeholder="Escribe aquí…"></textarea>
-        <button id="btn-mic" title="Mantén pulsado para dictar">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-            <path d="M12 1a4 4 0 0 1 4 4v6a4 4 0 0 1-8 0V5a4 4 0 0 1 4-4zm-1 18.93V22h2v-2.07A8.001 8.001 0 0 0 20 12h-2a6 6 0 0 1-12 0H4a8.001 8.001 0 0 0 7 7.93z"/>
-          </svg>
-        </button>
-        <button id="btn-send" title="Enviar">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-            <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z"/>
-          </svg>
-        </button>
-      </div>
-      <div id="stt-unsupported">⚠ Tu navegador no soporta dictado de voz</div>
-    </div>
-  </div>
 
-  <!-- ─── SIGN PANEL ──────────────────────────────────────── -->
-  <div class="sign-panel" id="sign-panel">
-    <div class="sign-inner">
-      <div class="sign-title">🎥 Reconocimiento de Señas</div>
-
-      <div id="video-container">
-        <video id="webcam" autoplay playsinline muted></video>
-        <canvas id="overlay-canvas"></canvas>
-        <div class="cam-off-msg" id="cam-off-msg">
-          <span>📷</span>
-          <p>Activa la cámara para<br>reconocer señas</p>
+      <!-- Sub-view: Texto -->
+      <div id="sordo-texto" class="sub-view active">
+        <div class="card">
+          <div class="card-label">
+            <span class="glosa-tag">YO · ESCRIBIR · GLOSA</span>
+            <span class="label-text">Escribe aquí</span>
+          </div>
+          <textarea class="input-area" id="sordo-input"
+            placeholder="YO QUERER AGUA   o   Quiero agua…"></textarea>
+          <div class="input-actions">
+            <div class="action-left">
+              <button class="sm-btn" title="Borrar" onclick="clearSordoInput()">🗑️</button>
+            </div>
+            <button class="translate-pill" onclick="traducirSordo()">
+              <span class="pill-glosa">TRADUCIR · AHORA</span>
+              Traducir →
+            </button>
+          </div>
         </div>
       </div>
 
-      <div class="sign-controls">
-        <button class="ctrl-btn primary" id="btn-cam">Activar cámara</button>
-        <button class="ctrl-btn" id="btn-record" disabled>⏺ Grabar</button>
-        <button class="ctrl-btn danger" id="btn-stop" disabled>⏹ Detener</button>
+      <!-- Sub-view: Cámara -->
+      <div id="sordo-camara" class="sub-view">
+        <div class="card">
+          <div class="camera-view">
+            <div class="scan-line"></div>
+            <div class="cc-tl cam-corner"></div><div class="cc-tr cam-corner"></div>
+            <div class="cc-bl cam-corner"></div><div class="cc-br cam-corner"></div>
+            <video id="sordo-webcam" autoplay playsinline muted
+              style="width:100%;height:100%;object-fit:cover;transform:scaleX(-1);display:none;"></video>
+            <div class="cam-placeholder" id="sordo-cam-off">
+              <span class="big">🤲</span>
+              <span class="cp-glosa">ACTIVAR · CÁMARA · GRABAR</span>
+              <span>Activa la cámara y graba tu seña</span>
+            </div>
+          </div>
+          <div class="camera-bar">
+            <button class="cam-start" id="btn-sordo-cam" onclick="toggleSordoCam()">
+              <span class="cs-glosa">CÁMARA · ON/OFF</span>
+              ▶ Activar cámara
+            </button>
+            <button class="cam-rec" id="btn-sordo-rec" onclick="toggleSordoRecord()" disabled>
+              ⏺ Grabar
+            </button>
+          </div>
+        </div>
       </div>
 
-      <label class="mirror-row">
-        <input type="checkbox" id="mirror-check" />
-        Espejo (voltear imagen)
-      </label>
+      <!-- Resultado sordo -->
+      <div class="result-block" id="sordo-result">
 
-      <div class="sign-result" id="sign-result">
-        <div class="sign-glosa" id="res-glosa">—</div>
-        <div class="conf-bar"><div class="conf-fill" id="res-bar" style="width:0%"></div></div>
-        <div class="sign-conf" id="res-conf">Confianza: —</div>
-        <div class="top3-list" id="res-top3"></div>
+        <!-- 1. Avatar -->
+        <div class="result-section">
+          <div class="result-section-label">
+            <span class="rsl-glosa">VER · SEÑA · MODELO</span>
+            <span class="rsl-text">🤖 Seña en 3D</span>
+          </div>
+          <div class="avatar-box">
+            <div class="avatar-placeholder">
+              <span class="big">🖐️</span>
+              <span class="ap-glosa">MODELO · BLENDER · AQUÍ</span>
+              <span>Modelo 3D aparecerá aquí</span>
+            </div>
+          </div>
+          <div class="avatar-controls">
+            <button class="play-btn amber">
+              <span class="pb-glosa">VER · REPRODUCIR</span>
+              ▶ Reproducir
+            </button>
+            <button class="speed-btn">1×</button>
+          </div>
+        </div>
+
+        <!-- 2. Glosa -->
+        <div class="result-section">
+          <div class="result-section-label">
+            <span class="rsl-glosa">GLOSA · LSM</span>
+            <span class="rsl-text">🔤 Glosa LSM</span>
+          </div>
+          <div class="glosa-wrap" id="sordo-glosa-out"></div>
+        </div>
+
+        <!-- 3. Texto español -->
+        <div class="result-section">
+          <div class="result-section-label">
+            <span class="rsl-glosa">TEXTO · ESPAÑOL</span>
+            <span class="rsl-text">💬 En español</span>
+          </div>
+          <div class="text-result" id="sordo-text-out"></div>
+        </div>
+
+        <div class="result-actions">
+          <button class="out-btn" onclick="copiarResultado('sordo')">
+            <span class="ob-glosa">COPIAR</span>
+            <span class="ob-label">📄 Copiar</span>
+          </button>
+          <button class="out-btn" data-audio onclick="reproducirAudio('sordo')">
+            <span class="ob-glosa">ESCUCHAR</span>
+            <span class="ob-label">🔊 Audio</span>
+          </button>
+          <button class="out-btn">
+            <span class="ob-glosa">COMPARTIR</span>
+            <span class="ob-label">📤 Enviar</span>
+          </button>
+        </div>
       </div>
 
-      <button id="btn-insert-sign">
-        ↩ Insertar glosa en el chat
+    </div><!-- /view-sordo -->
+
+    <!-- ══════════════════ VIEW: OYENTE ══════════════════ -->
+    <div id="view-oyente" class="view">
+
+      <button class="back-bar" onclick="goHome()">
+        ← <span style="color:var(--accent2)">REGRESAR</span> &nbsp; Volver
+        <span class="flow-badge teal">🗣️ ESPAÑOL → SEÑA</span>
       </button>
-    </div>
-  </div>
 
-</div><!-- .layout -->
+      <!-- Input tabs -->
+      <div class="input-tabs">
+        <button class="tab-btn active teal" id="otab-escribe" onclick="setOyenteTab('escribe')">
+          <span class="tb-glosa">ESCRIBIR · TEXTO</span>
+          <span class="tb-label">✏️ Escribir</span>
+        </button>
+        <button class="tab-btn teal" id="otab-voz" onclick="setOyenteTab('voz')">
+          <span class="tb-glosa">HABLAR · VOZ</span>
+          <span class="tb-label">🎙️ Voz</span>
+        </button>
+      </div>
 
-<script>
-// ── State ─────────────────────────────────────────────────────────────────
-let direction  = 'esp_to_lsm';   // current translation direction
-let lastGlosa  = '';              // last recognized sign glosa
-let isSending  = false;
+      <!-- Sub-view: Escribir -->
+      <div id="oyente-escribe" class="sub-view active">
+        <div class="card">
+          <div class="card-label">
+            <span class="glosa-tag">ESCRIBIR · ESPAÑOL</span>
+            <span class="label-text">Escribe en español</span>
+          </div>
+          <textarea class="input-area" id="oyente-input"
+            placeholder="Ej: Buenos días, ¿cómo estás?"></textarea>
+          <div class="input-actions">
+            <div class="action-left">
+              <button class="sm-btn" onclick="clearOyenteInput()">🗑️</button>
+            </div>
+            <button class="translate-pill teal" onclick="traducirOyente()">
+              <span class="pill-glosa">TRADUCIR · AHORA</span>
+              Traducir →
+            </button>
+          </div>
+        </div>
+      </div>
 
-// ── Element refs ──────────────────────────────────────────────────────────
-const messagesEl  = document.getElementById('messages');
-const emptyState  = document.getElementById('empty-state');
-const msgInput    = document.getElementById('msg-input');
-const btnSend     = document.getElementById('btn-send');
-const btnEsp      = document.getElementById('btn-esp');
-const btnLsm      = document.getElementById('btn-lsm');
-const btnTogSign  = document.getElementById('btn-toggle-sign');
-const signPanel   = document.getElementById('sign-panel');
+      <!-- Sub-view: Voz -->
+      <div id="oyente-voz" class="sub-view">
+        <div class="mic-section">
+          <div class="mic-big" id="mic-btn" onclick="toggleMic()">🎙️</div>
+          <div class="mic-label-wrap">
+            <div class="mic-glosa">HABLAR · GRABAR · VOZ</div>
+            <div class="mic-label" id="mic-label">Toca para hablar</div>
+          </div>
+          <div class="mic-or">o</div>
+          <button class="upload-audio-btn" onclick="document.getElementById('audio-file-input').click()">
+            <span class="ub-glosa">SUBIR · ARCHIVO · AUDIO</span>
+            ⏫ Subir archivo de audio
+          </button>
+          <input type="file" id="audio-file-input" accept="audio/*">
+        </div>
 
-// sign refs
-const webcamEl    = document.getElementById('webcam');
-const camOffMsg   = document.getElementById('cam-off-msg');
-const btnCam      = document.getElementById('btn-cam');
-const btnRecord   = document.getElementById('btn-record');
-const btnStop     = document.getElementById('btn-stop');
-const mirrorChk   = document.getElementById('mirror-check');
-const signResult  = document.getElementById('sign-result');
-const resGlosa    = document.getElementById('res-glosa');
-const resBar      = document.getElementById('res-bar');
-const resConf     = document.getElementById('res-conf');
-const resTop3     = document.getElementById('res-top3');
-const btnInsert   = document.getElementById('btn-insert-sign');
+        <!-- Transcripción previa -->
+        <div class="card hidden" id="stt-preview-card">
+          <div class="card-label">
+            <span class="glosa-tag">TEXTO · TRANSCRITO · VOZ</span>
+            <span class="label-text">Lo que dijiste</span>
+          </div>
+          <div class="output-area">
+            <div class="text-result" id="stt-preview-text"></div>
+          </div>
+          <div class="input-actions">
+            <div class="action-left">
+              <button class="sm-btn" title="Editar" onclick="editarTranscripcion()">✏️</button>
+            </div>
+            <button class="translate-pill teal" onclick="traducirDesdeVoz()">
+              <span class="pill-glosa">TRADUCIR · AHORA</span>
+              Traducir →
+            </button>
+          </div>
+        </div>
+      </div>
 
-// ── Direction buttons ─────────────────────────────────────────────────────
-[btnEsp, btnLsm].forEach(btn => {
-  btn.addEventListener('click', () => {
-    direction = btn.dataset.dir;
-    btnEsp.classList.toggle('selected', direction === 'esp_to_lsm');
-    btnLsm.classList.toggle('selected', direction === 'lsm_to_esp');
-    msgInput.placeholder = direction === 'esp_to_lsm'
-      ? 'Escribe en español…'
-      : 'Escribe en LSM (glosas)…';
-    msgInput.focus();
-  });
-});
+      <!-- Resultado oyente -->
+      <div class="result-block" id="oyente-result">
 
-// ── Sign panel toggle ─────────────────────────────────────────────────────
-btnTogSign.addEventListener('click', () => {
-  signPanel.classList.toggle('open');
-  btnTogSign.classList.toggle('active', signPanel.classList.contains('open'));
-});
+        <!-- 1. Avatar -->
+        <div class="result-section">
+          <div class="result-section-label">
+            <span class="rsl-glosa">VER · SEÑA · MODELO</span>
+            <span class="rsl-text">🤖 Seña en 3D</span>
+          </div>
+          <div class="avatar-box">
+            <div class="avatar-placeholder">
+              <span class="big">🖐️</span>
+              <span class="ap-glosa">MODELO · BLENDER · AQUÍ</span>
+              <span>Modelo 3D aparecerá aquí</span>
+            </div>
+          </div>
+          <div class="avatar-controls">
+            <button class="play-btn">
+              <span class="pb-glosa">VER · REPRODUCIR</span>
+              ▶ Reproducir
+            </button>
+            <button class="speed-btn">1×</button>
+          </div>
+        </div>
 
-// ── Textarea auto-grow ────────────────────────────────────────────────────
-msgInput.addEventListener('input', () => {
-  msgInput.style.height = 'auto';
-  msgInput.style.height = Math.min(msgInput.scrollHeight, 160) + 'px';
-});
-msgInput.addEventListener('keydown', e => {
-  if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-});
+        <!-- 2. Glosa -->
+        <div class="result-section">
+          <div class="result-section-label">
+            <span class="rsl-glosa">GLOSA · LSM</span>
+            <span class="rsl-text">🔤 Glosa LSM</span>
+          </div>
+          <div class="glosa-wrap" id="oyente-glosa-out"></div>
+        </div>
 
-// ── Send ──────────────────────────────────────────────────────────────────
-btnSend.addEventListener('click', sendMessage);
+        <!-- 3. Texto español -->
+        <div class="result-section">
+          <div class="result-section-label">
+            <span class="rsl-glosa">TEXTO · ESPAÑOL</span>
+            <span class="rsl-text">💬 En español</span>
+          </div>
+          <div class="text-result" id="oyente-text-out"></div>
+        </div>
 
-async function sendMessage() {
-  const text = msgInput.value.trim();
-  if (!text || isSending) return;
+        <div class="result-actions">
+          <button class="out-btn" onclick="copiarResultado('oyente')">
+            <span class="ob-glosa">COPIAR</span>
+            <span class="ob-label">📄 Copiar</span>
+          </button>
+          <button class="out-btn" data-audio onclick="reproducirAudio('oyente')">
+            <span class="ob-glosa">ESCUCHAR</span>
+            <span class="ob-label">🔊 Audio</span>
+          </button>
+          <button class="out-btn">
+            <span class="ob-glosa">COMPARTIR</span>
+            <span class="ob-label">📤 Enviar</span>
+          </button>
+        </div>
+      </div>
 
-  isSending = true;
-  btnSend.disabled = true;
-  emptyState.remove && emptyState.parentNode && emptyState.remove();
+    </div><!-- /view-oyente -->
 
-  // Outgoing bubble
-  const dirLabel = direction === 'esp_to_lsm' ? '🇲🇽 Español' : '🤟 LSM';
-  appendBubble('outgoing', dirLabel, text);
-  msgInput.value = '';
-  msgInput.style.height = 'auto';
+  </div><!-- /content -->
 
-  // Loading bubble
-  const loadingId = 'loading-' + Date.now();
-  appendLoadingBubble(loadingId);
+  <!-- BOTTOM NAV -->
+  <nav>
+    <button class="nav-btn active" id="nav-inicio" onclick="showView('inicio', this)">
+      <span class="nav-icon">🏠</span>
+      <span class="nav-glosa">INICIO</span>
+      <span class="nav-label">Inicio</span>
+    </button>
+    <button class="nav-btn" id="nav-sordo" onclick="showFlow('sordo')">
+      <span class="nav-icon">🤟</span>
+      <span class="nav-glosa">YO · SORDA</span>
+      <span class="nav-label">Sorda</span>
+    </button>
+    <button class="nav-btn" id="nav-oyente" onclick="showFlow('oyente')">
+      <span class="nav-icon">🗣️</span>
+      <span class="nav-glosa">YO · OYENTE</span>
+      <span class="nav-label">Oyente</span>
+    </button>
+  </nav>
 
-  try {
-    const res = await fetch('/translate', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ text, direction }),
-    });
-    const data = await res.json();
-    removeLoadingBubble(loadingId);
+  <script>
+  // ── Navigation ─────────────────────────────────────────────────────────
+  function showView(id, btn) {
+    document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+    document.getElementById('view-' + id).classList.add('active');
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
+    if (btn) btn.classList.add('active');
+  }
+  function showFlow(who) {
+    showView(who, document.getElementById('nav-' + who));
+  }
+  function goHome() {
+    showView('inicio', document.getElementById('nav-inicio'));
+  }
 
-    if (data.error) {
-      appendBubble('incoming', '⚠ Error', data.error, true);
-    } else {
-      const replyLabel = direction === 'esp_to_lsm' ? '🤟 LSM' : '🇲🇽 Español';
-      appendBubble('incoming', replyLabel, data.translation);
+  // ── Sordo tabs ─────────────────────────────────────────────────────────
+  function setSordoTab(tab) {
+    document.getElementById('sordo-texto').classList.toggle('active', tab === 'texto');
+    document.getElementById('sordo-camara').classList.toggle('active', tab === 'camara');
+    document.getElementById('stab-texto').classList.toggle('active', tab === 'texto');
+    document.getElementById('stab-cam').classList.toggle('active', tab === 'camara');
+  }
+
+  // ── Oyente tabs ────────────────────────────────────────────────────────
+  function setOyenteTab(tab) {
+    document.getElementById('oyente-escribe').classList.toggle('active', tab === 'escribe');
+    document.getElementById('oyente-voz').classList.toggle('active', tab === 'voz');
+    document.getElementById('otab-escribe').classList.toggle('active', tab === 'escribe');
+    document.getElementById('otab-voz').classList.toggle('active', tab === 'voz');
+  }
+
+  function clearSordoInput()  { document.getElementById('sordo-input').value = ''; document.getElementById('sordo-result').classList.remove('visible'); }
+  function clearOyenteInput() { document.getElementById('oyente-input').value = ''; document.getElementById('oyente-result').classList.remove('visible'); }
+
+  // ── Sample translation ─────────────────────────────────────────────────
+  const GLOSA_SAMPLE = ['YO','QUERER','AGUA','FAVOR','NECESITAR','AYUDA','HOY','TENER','DOLOR','GRACIAS'];
+
+  function renderResultado(who, glosaWords, textoEsp) {
+    const isOyente = who === 'oyente';
+    const glosaEl  = document.getElementById(who + '-glosa-out');
+    const textEl   = document.getElementById(who + '-text-out');
+    glosaEl.innerHTML = glosaWords.map(w =>
+      `<span class="glosa-chip ${isOyente ? 'teal' : ''}">${w}</span>`
+    ).join('');
+    textEl.textContent = textoEsp;
+    const block = document.getElementById(who + '-result');
+    block.classList.add('visible');
+    block.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  async function traducirSordo() {
+    const text = document.getElementById('sordo-input').value.trim();
+    if (!text) return;
+    try {
+      const res  = await fetch('/translate', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ text, direction: 'lsm_to_esp' })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      const glosaWords = text.toUpperCase().split(/\s+/).filter(Boolean);
+      renderResultado('sordo', glosaWords, data.translation);
+    } catch {
+      const words = GLOSA_SAMPLE.slice(0, Math.min(text.split(/\s+/).length + 2, GLOSA_SAMPLE.length));
+      renderResultado('sordo', words, '[Traducción del servidor]');
     }
-  } catch (err) {
-    removeLoadingBubble(loadingId);
-    appendBubble('incoming', '⚠ Error', 'No se pudo conectar al servidor.', true);
   }
 
-  isSending = false;
-  btnSend.disabled = false;
-  msgInput.focus();
-}
-
-function appendBubble(side, label, text, isError = false) {
-  const row = document.createElement('div');
-  row.className = `msg-row ${side}`;
-
-  const lbl = document.createElement('div');
-  lbl.className = 'msg-label';
-  lbl.textContent = label;
-
-  const bubble = document.createElement('div');
-  bubble.className = 'bubble' + (isError ? ' error' : '');
-  bubble.textContent = text;
-
-  row.appendChild(lbl);
-  row.appendChild(bubble);
-  messagesEl.appendChild(row);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-}
-
-function appendLoadingBubble(id) {
-  const row = document.createElement('div');
-  row.className = 'msg-row incoming';
-  row.id = id;
-
-  const lbl = document.createElement('div');
-  lbl.className = 'msg-label';
-  lbl.textContent = '✦ Traduciendo';
-
-  const bubble = document.createElement('div');
-  bubble.className = 'bubble loading';
-  bubble.innerHTML = '<span class="dots"><span></span><span></span><span></span></span>';
-
-  row.appendChild(lbl);
-  row.appendChild(bubble);
-  messagesEl.appendChild(row);
-  messagesEl.scrollTop = messagesEl.scrollHeight;
-}
-
-function removeLoadingBubble(id) {
-  const el = document.getElementById(id);
-  if (el) el.remove();
-}
-
-// ── Webcam & recording ────────────────────────────────────────────────────
-let stream      = null;
-let mediaRec    = null;
-let recordedChunks = [];
-
-btnCam.addEventListener('click', async () => {
-  if (stream) {
-    stopCamera(); return;
+  async function traducirOyente() {
+    const text = document.getElementById('oyente-input').value.trim();
+    if (!text) return;
+    try {
+      const res  = await fetch('/translate', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ text, direction: 'esp_to_lsm' })
+      });
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      const glosaWords = data.translation.toUpperCase().split(/\s+/).filter(Boolean);
+      renderResultado('oyente', glosaWords, text);
+    } catch {
+      const words = GLOSA_SAMPLE.slice(0, Math.min(text.split(/\s+/).length + 2, GLOSA_SAMPLE.length));
+      renderResultado('oyente', words, text);
+    }
   }
-  try {
-    stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
-    webcamEl.srcObject = stream;
-    camOffMsg.style.display = 'none';
-    btnCam.textContent = '⏏ Detener cámara';
-    btnRecord.disabled = false;
-  } catch (err) {
-    alert('No se pudo acceder a la cámara: ' + err.message);
+
+  async function traducirDesdeVoz() {
+    const text = document.getElementById('stt-preview-text').textContent.trim();
+    if (!text) return;
+    document.getElementById('oyente-input').value = text;
+    await traducirOyente();
   }
-});
 
-function stopCamera() {
-  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
-  webcamEl.srcObject = null;
-  camOffMsg.style.display = '';
-  btnCam.textContent = 'Activar cámara';
-  btnRecord.disabled = true;
-  btnStop.disabled   = true;
-}
-
-btnRecord.addEventListener('click', () => {
-  if (!stream) return;
-  recordedChunks = [];
-  mediaRec = new MediaRecorder(stream, { mimeType: 'video/webm' });
-  mediaRec.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
-  mediaRec.onstop = processRecording;
-  mediaRec.start();
-  btnRecord.innerHTML = '<span class="rec-dot"></span> Grabando…';
-  btnRecord.disabled = true;
-  btnStop.disabled   = false;
-});
-
-btnStop.addEventListener('click', () => {
-  if (mediaRec && mediaRec.state !== 'inactive') mediaRec.stop();
-  btnRecord.textContent = '⏺ Grabar';
-  btnRecord.disabled = false;
-  btnStop.disabled   = true;
-});
-
-async function processRecording() {
-  const blob    = new Blob(recordedChunks, { type: 'video/webm' });
-  const frames  = await extractFrames(blob, 30);  // max 30 frames
-  if (!frames.length) return;
-
-  signResult.classList.add('visible');
-  resGlosa.textContent = '…';
-  resConf.textContent  = 'Procesando…';
-  resBar.style.width   = '0%';
-  resTop3.innerHTML    = '';
-  btnInsert.classList.remove('visible');
-
-  try {
-    const res = await fetch('/infer', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ frames, mirror: mirrorChk.checked }),
-    });
-    const data = await res.json();
-    if (data.error) { resGlosa.textContent = 'Error'; resConf.textContent = data.error; return; }
-
-    lastGlosa = data.glosa;
-    resGlosa.textContent  = data.glosa;
-    resConf.textContent   = `Confianza: ${(data.conf * 100).toFixed(1)}%`;
-    resBar.style.width    = (data.conf * 100).toFixed(1) + '%';
-
-    resTop3.innerHTML = '';
-    (data.top3 || []).forEach(([lbl, p]) => {
-      resTop3.innerHTML += `<div class="top3-item">
-        <span class="lbl">${lbl}</span>
-        <span class="pct">${(p*100).toFixed(1)}%</span></div>`;
-    });
-
-    btnInsert.classList.add('visible');
-  } catch (err) {
-    resGlosa.textContent = 'Error';
-    resConf.textContent  = 'No se pudo conectar con el servidor.';
+  function editarTranscripcion() {
+    const text = document.getElementById('stt-preview-text').textContent;
+    setOyenteTab('escribe');
+    document.getElementById('oyente-input').value = text;
   }
-}
 
-async function extractFrames(blob, maxFrames) {
-  return new Promise(resolve => {
-    const url    = URL.createObjectURL(blob);
-    const video  = document.createElement('video');
-    const canvas = document.createElement('canvas');
-    const ctx    = canvas.getContext('2d');
-    const frames = [];
+  // ── Output actions ─────────────────────────────────────────────────────
+  function copiarResultado(who) {
+    const t = document.getElementById(who + '-text-out').textContent.trim();
+    if (t && navigator.clipboard) navigator.clipboard.writeText(t);
+  }
 
-    video.src    = url;
-    video.muted  = true;
-    video.onloadedmetadata = () => {
-      const dur      = video.duration;
-      const interval = dur / Math.min(maxFrames, 30);
-      let   t        = 0;
+  // ── TTS server-side (gTTS via /tts) ───────────────────────────────────
+  // Browser speechSynthesis is NOT used — the device has no Spanish voices.
+  // Instead we POST the text to Flask /tts, get back an MP3 blob, and play
+  // it with a plain <audio> element. Works on any browser/device.
 
-      canvas.width  = video.videoWidth  || 640;
-      canvas.height = video.videoHeight || 480;
+  const _ttsAudio = new Audio();   // single reusable Audio element
+  let   _ttsWho   = null;
 
-      const step = () => {
-        if (t > dur || frames.length >= maxFrames) {
-          URL.revokeObjectURL(url);
-          resolve(frames);
-          return;
-        }
-        video.currentTime = t;
-        t += interval;
-      };
-
-      video.onseeked = () => {
-        ctx.drawImage(video, 0, 0);
-        const b64 = canvas.toDataURL('image/jpeg', 0.85)
-                          .replace(/^data:image\/\w+;base64,/, '');
-        frames.push(b64);
-        step();
-      };
-
-      step();
+  function _setAudioBtn(who, state) {
+    const block = document.getElementById(who + '-result');
+    if (!block) return;
+    const btn = block.querySelector('.out-btn[data-audio]');
+    if (!btn) return;
+    const g = btn.querySelector('.ob-glosa');
+    const l = btn.querySelector('.ob-label');
+    const M = {
+      loading: ['CARGANDO…', '⏳ Cargando'],
+      playing: ['PAUSAR',    '⏸ Pausar'],
+      paused:  ['REANUDAR',  '▶ Reanudar'],
+      idle:    ['ESCUCHAR',  '🔊 Audio'],
     };
-    video.onerror = () => resolve([]);
-    video.load();
-  });
-}
+    const [gt, lt] = M[state] || M.idle;
+    if (g) g.textContent = gt;
+    if (l) l.textContent = lt;
+  }
 
-// Insert last recognized glosa into chat input
-btnInsert.addEventListener('click', () => {
-  if (!lastGlosa) return;
-  msgInput.value = lastGlosa;
-  msgInput.dispatchEvent(new Event('input'));
-  msgInput.focus();
-});
-
-// ── Speech-to-Text (server-side via faster-whisper — works in all browsers) ──
-const btnMic   = document.getElementById('btn-mic');
-const sttUnsup = document.getElementById('stt-unsupported');
-
-if (!navigator.mediaDevices || !window.MediaRecorder) {
-  btnMic.style.display   = 'none';
-  sttUnsup.style.display = 'block';
-} else {
-  let micStream   = null;
-  let micRec      = null;
-  let micChunks   = [];
-  let isListening = false;
-
-  btnMic.addEventListener('click', async () => {
-    if (isListening) {
-      // ── Stop recording ──────────────────────────────────────────────
-      micRec.stop();
+  async function reproducirAudio(who) {
+    // ── Toggle pause / resume ──────────────────────────────────────────
+    if (_ttsWho === who && !_ttsAudio.paused) {
+      _ttsAudio.pause();
+      _setAudioBtn(who, 'paused');
+      return;
+    }
+    if (_ttsWho === who && _ttsAudio.paused && _ttsAudio.src) {
+      _ttsAudio.play();
+      _setAudioBtn(who, 'playing');
       return;
     }
 
-    // ── Start recording ─────────────────────────────────────────────
+    // ── Stop anything playing ──────────────────────────────────────────
+    _ttsAudio.pause();
+    _ttsAudio.src = '';
+    if (_ttsWho) _setAudioBtn(_ttsWho, 'idle');
+    _ttsWho = null;
+
+    // ── Get text ───────────────────────────────────────────────────────
+    const el   = document.getElementById(who + '-text-out');
+    const text = el ? el.textContent.trim() : '';
+    if (!text) return;
+
+    // ── Show loading state ─────────────────────────────────────────────
+    _ttsWho = who;
+    _setAudioBtn(who, 'loading');
+
+    // ── Fetch MP3 from server ──────────────────────────────────────────
+    try {
+      const res = await fetch('/tts', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ text }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${res.status}`);
+      }
+
+      const blob = await res.blob();
+      const url  = URL.createObjectURL(blob);
+
+      // ── Play ─────────────────────────────────────────────────────────
+      _ttsAudio.src = url;
+
+      _ttsAudio.oncanplaythrough = null; // clear old handlers
+      _ttsAudio.onended  = () => { _ttsWho = null; _setAudioBtn(who, 'idle'); URL.revokeObjectURL(url); };
+      _ttsAudio.onerror  = () => { _ttsWho = null; _setAudioBtn(who, 'idle'); };
+      _ttsAudio.onpause  = () => { if (_ttsAudio.ended) return; _setAudioBtn(who, 'paused'); };
+      _ttsAudio.onplay   = () => _setAudioBtn(who, 'playing');
+
+      await _ttsAudio.play();
+
+    } catch (err) {
+      _ttsWho = null;
+      _setAudioBtn(who, 'idle');
+      console.error('TTS error:', err.message);
+    }
+  }
+
+  // ── Sordo camera ───────────────────────────────────────────────────────
+  let sordoStream = null, sordoRec = null, sordoChunks = [], sordoIsRec = false;
+
+  async function toggleSordoCam() {
+    const btn   = document.getElementById('btn-sordo-cam');
+    const video = document.getElementById('sordo-webcam');
+    const off   = document.getElementById('sordo-cam-off');
+    const recB  = document.getElementById('btn-sordo-rec');
+    if (sordoStream) {
+      sordoStream.getTracks().forEach(t => t.stop()); sordoStream = null;
+      video.style.display = 'none'; video.srcObject = null;
+      off.style.display = ''; btn.innerHTML = '<span class="cs-glosa">CÁMARA · ON/OFF</span> ▶ Activar cámara';
+      recB.disabled = true; return;
+    }
+    try {
+      sordoStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: false });
+      video.srcObject = sordoStream; video.style.display = 'block'; off.style.display = 'none';
+      btn.innerHTML = '<span class="cs-glosa">CÁMARA · ON/OFF</span> ⏏ Desactivar';
+      recB.disabled = false;
+    } catch(e) { alert('No se pudo acceder a la cámara: ' + e.message); }
+  }
+
+  function toggleSordoRecord() {
+    const recB = document.getElementById('btn-sordo-rec');
+    if (!sordoStream) return;
+
+    if (!sordoIsRec) {
+      // ── START recording ──────────────────────────────────────────────
+      sordoChunks = [];
+      const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp8')
+        ? 'video/webm;codecs=vp8' : 'video/webm';
+      sordoRec = new MediaRecorder(sordoStream, { mimeType: mime });
+      sordoRec.ondataavailable = e => { if (e.data.size > 0) sordoChunks.push(e.data); };
+
+      sordoRec.onstop = async () => {
+        sordoIsRec = false;
+        recB.classList.remove('recording');
+        recB.innerHTML = '⏺ Grabar';
+        recB.disabled = true;
+
+        // Show processing state in result area
+        const block = document.getElementById('sordo-result');
+        block.classList.add('visible');
+        document.getElementById('sordo-glosa-out').innerHTML =
+          '<span style="color:var(--muted);font-size:0.82rem">⏳ Procesando seña…</span>';
+        document.getElementById('sordo-text-out').textContent = '';
+        block.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+        try {
+          // Extract up to 30 JPEG frames from the recorded video blob
+          const blob   = new Blob(sordoChunks, { type: mime });
+          const frames = await extractVideoFrames(blob, 30);
+
+          if (!frames.length) throw new Error('No se pudieron extraer frames del video.');
+
+          const res  = await fetch('/infer', {
+            method:  'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body:    JSON.stringify({ frames, mirror: false }),
+          });
+          const data = await res.json();
+
+          if (data.error) throw new Error(data.error);
+
+          // Build glosa chips from top3 for richer display
+          const glosaWords = [data.glosa];   // main prediction
+          const conf       = (data.conf * 100).toFixed(1);
+          const label      = `${data.glosa} (${conf}%)`;
+
+          // Show top3 as extra chips if available
+          const top3Words = (data.top3 || []).map(([g]) => g);
+
+          renderResultado('sordo', glosaWords, label);
+
+          // Also show top3 below in a subtle way
+          const glosaEl = document.getElementById('sordo-glosa-out');
+          if (data.top3 && data.top3.length > 1) {
+            const extras = data.top3.slice(1).map(([g, p]) =>
+              `<span class="glosa-chip" style="opacity:0.5;font-size:0.7rem">${g} ${(p*100).toFixed(0)}%</span>`
+            ).join('');
+            glosaEl.innerHTML += ' ' + extras;
+          }
+
+        } catch (err) {
+          document.getElementById('sordo-glosa-out').innerHTML =
+            `<span style="color:var(--danger);font-size:0.82rem">⚠ ${err.message}</span>`;
+          document.getElementById('sordo-text-out').textContent = '';
+        }
+
+        recB.disabled = false;
+      };
+
+      sordoRec.start(200); // chunk every 200ms
+      sordoIsRec = true;
+      recB.classList.add('recording');
+      recB.innerHTML = '<span class="rec-dot"></span> Detener';
+
+    } else {
+      // ── STOP recording ───────────────────────────────────────────────
+      sordoRec.stop();
+    }
+  }
+
+  // Extract JPEG frames from a video Blob by seeking through it
+  function extractVideoFrames(blob, maxFrames) {
+    return new Promise(resolve => {
+      const url    = URL.createObjectURL(blob);
+      const video  = document.createElement('video');
+      const canvas = document.createElement('canvas');
+      const ctx    = canvas.getContext('2d');
+      const frames = [];
+
+      video.src    = url;
+      video.muted  = true;
+      video.playsInline = true;
+
+      video.onerror = () => { URL.revokeObjectURL(url); resolve([]); };
+
+      video.onloadedmetadata = () => {
+        canvas.width  = video.videoWidth  || 640;
+        canvas.height = video.videoHeight || 480;
+
+        const dur      = video.duration;
+        const count    = Math.min(maxFrames, 30);
+        const interval = dur / count;
+        let   idx      = 0;
+
+        const seekNext = () => {
+          if (idx >= count) {
+            URL.revokeObjectURL(url);
+            resolve(frames);
+            return;
+          }
+          video.currentTime = idx * interval;
+          idx++;
+        };
+
+        video.onseeked = () => {
+          ctx.drawImage(video, 0, 0);
+          const b64 = canvas.toDataURL('image/jpeg', 0.80)
+                            .replace(/^data:image\/\w+;base64,/, '');
+          frames.push(b64);
+          seekNext();
+        };
+
+        seekNext();
+      };
+
+      video.load();
+    });
+  }
+
+  // ── Mic STT ────────────────────────────────────────────────────────────
+  let micStream = null, micRec = null, micChunks = [], isListening = false;
+  const micBtn      = document.getElementById('mic-btn');
+  const micLabel    = document.getElementById('mic-label');
+  const previewCard = document.getElementById('stt-preview-card');
+  const previewText = document.getElementById('stt-preview-text');
+
+  function setMicState(state) {
+    // state: 'idle' | 'recording' | 'processing'
+    const icons = { idle: '🎙️', recording: '⏹', processing: '⏳' };
+    const labels = {
+      idle:       'Toca para hablar',
+      recording:  'Grabando… toca para detener',
+      processing: 'Procesando audio…',
+    };
+    micBtn.textContent = icons[state] || '🎙️';
+    micLabel.textContent = labels[state] || '';
+    micBtn.classList.toggle('recording', state === 'recording');
+    micLabel.classList.toggle('recording', state === 'recording');
+  }
+
+  async function toggleMic() {
+    if (isListening) {
+      if (micRec && micRec.state !== 'inactive') micRec.stop();
+      return;
+    }
+    if (!navigator.mediaDevices || !window.MediaRecorder) {
+      alert('Tu navegador no soporta grabación de audio.');
+      return;
+    }
     try {
       micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-    } catch (err) {
-      alert('No se pudo acceder al micrófono: ' + err.message);
+    } catch(e) {
+      alert('No se pudo acceder al micrófono: ' + e.message);
       return;
     }
 
     micChunks = [];
-
-    // Pick best supported mime type
-    const mimeType = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/ogg']
+    const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/ogg']
       .find(m => MediaRecorder.isTypeSupported(m)) || '';
+    micRec = new MediaRecorder(micStream, mime ? { mimeType: mime } : {});
 
-    micRec = new MediaRecorder(micStream, mimeType ? { mimeType } : {});
     micRec.ondataavailable = e => { if (e.data.size > 0) micChunks.push(e.data); };
+
     micRec.onstop = async () => {
-      // Stop mic tracks
       micStream.getTracks().forEach(t => t.stop());
       micStream = null;
-
       isListening = false;
-      btnMic.classList.remove('listening');
-      btnMic.title    = 'Dictado de voz';
-      btnMic.disabled = true;   // disable while transcribing
+
+      setMicState('processing');
 
       const blob     = new Blob(micChunks, { type: micRec.mimeType || 'audio/webm' });
-      const formData = new FormData();
-      formData.append('audio', blob, 'recording' + (micRec.mimeType?.includes('ogg') ? '.ogg' : '.webm'));
+      const filename = (mime.includes('ogg') ? 'rec.ogg' : 'rec.webm');
+      const fd       = new FormData();
+      fd.append('audio', blob, filename);
 
+      let transcribed = '';
       try {
-        const res  = await fetch('/stt', { method: 'POST', body: formData });
+        const res  = await fetch('/stt', { method: 'POST', body: fd });
         const data = await res.json();
         if (data.error) {
-          alert('Error STT: ' + data.error);
-        } else if (data.text) {
-          // Put transcription in input and auto-send
-          msgInput.value = data.text;
-          msgInput.dispatchEvent(new Event('input'));
-          await sendMessage();
+          transcribed = '⚠ Error del servidor: ' + data.error;
+        } else {
+          transcribed = (data.text || '').trim();
+          if (!transcribed) transcribed = '⚠ No se detectó voz en el audio.';
         }
-      } catch (err) {
-        alert('No se pudo conectar con el servidor para STT.');
-      } finally {
-        btnMic.disabled = false;
+      } catch(err) {
+        transcribed = '⚠ No se pudo conectar al servidor (/stt).';
       }
+
+      previewText.textContent = transcribed;
+      previewCard.classList.remove('hidden');
+      // Scroll to preview
+      previewCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      setMicState('idle');
     };
 
-    micRec.start();
+    micRec.start(500); // collect data every 500ms so onstop gets chunks reliably
     isListening = true;
-    btnMic.classList.add('listening');
-    btnMic.title = 'Detener y transcribir';
+    setMicState('recording');
+  }
+
+  // ── Upload audio ───────────────────────────────────────────────────────
+  document.getElementById('audio-file-input').addEventListener('change', async function() {
+    const file = this.files[0];
+    if (!file) return;
+    this.value = ''; // reset so same file can be re-uploaded
+
+    setMicState('processing');
+
+    const fd = new FormData();
+    fd.append('audio', file, file.name);
+
+    let transcribed = '';
+    try {
+      const res  = await fetch('/stt', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (data.error) {
+        transcribed = '⚠ Error del servidor: ' + data.error;
+      } else {
+        transcribed = (data.text || '').trim();
+        if (!transcribed) transcribed = '⚠ No se detectó voz en el archivo.';
+      }
+    } catch(err) {
+      transcribed = '⚠ No se pudo conectar al servidor (/stt).';
+    }
+
+    previewText.textContent = transcribed;
+    previewCard.classList.remove('hidden');
+    previewCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    setMicState('idle');
   });
-}
-</script>
+  </script>
 </body>
 </html>
