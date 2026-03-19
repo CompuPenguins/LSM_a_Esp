@@ -36,7 +36,9 @@ LABELS_PATH     = os.environ.get("LABELS_PATH",     "glosa_labels.json")
 CKPT_PATH       = os.environ.get("CKPT_PATH",       "best_model.ptrom")
 ESP_TO_LSM_DIR  = os.environ.get("ESP_TO_LSM_DIR",  "./translator/esp_to_lsm")
 LSM_TO_ESP_DIR  = os.environ.get("LSM_TO_ESP_DIR",  "./translator/lsm_to_esp")
-
+# ─── JSON de landmarks pre-calculados ────────────────────────────────────────
+LANDMARKS_JSON_PATH = os.environ.get("LANDMARKS_JSON", "pose_dict.json")
+_landmarks_db: dict = {}   # {"glosa": {"fps": 30, "frames": [[[x,y], ...], ...]}}
 # ─── Estado global ────────────────────────────────────────────────────────────
 ort_session     = None
 input_name      = None
@@ -63,6 +65,15 @@ INPUT_DIM   = N_KPT_MODEL * 2   # 118
 # Translation helpers
 # ─────────────────────────────────────────────────────────────────────────────
 
+def load_landmarks_db():
+    global _landmarks_db
+    if not os.path.exists(LANDMARKS_JSON_PATH):
+        print(f"⚠️  landmarks.json no encontrado en '{LANDMARKS_JSON_PATH}'")
+        return
+    with open(LANDMARKS_JSON_PATH, encoding="utf-8") as f:
+        _landmarks_db = json.load(f)
+    print(f"✅ {len(_landmarks_db)} glosas con landmarks cargadas")
+    
 def _load_translator(direction: str):
     """Load and cache a Seq2Seq translation model by direction key."""
     if direction in _translators:
@@ -140,28 +151,73 @@ def decode_frame_b64(b64_str: str):
     return cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
 
-def preprocess_landmarks(kpt_seq: np.ndarray, det_seq: np.ndarray):
-    TMAX = 200
-    T    = kpt_seq.shape[0]
+def _get_landmarks_for_glosa(glosa: str) -> list:
+    glosa = _normalize(glosa)
+    key   = glosa.strip().lower()
+    entry = (
+        _landmarks_db.get(glosa) or
+        _landmarks_db.get(key) or
+        next((v for k, v in _landmarks_db.items() if k.lower() == key), None)
+    )
+    if not entry:
+        print(f"  [landmarks] '{glosa}' (norm: '{norm_glosa}') no encontrado en DB")
+        return []
 
-    kpts   = kpt_seq[:, _KEEP_IDX, :]
-    xy     = kpts[:, :, :2].copy()
-    scores = kpts[:, :, 2]
-    xy[scores < 0.3] = 0.0
+    raw_frames = entry.get("frames", [])
+    if not raw_frames:
+        return []
 
-    shoulder_mid = (xy[:, 5, :] + xy[:, 6, :]) / 2.0
-    xy -= shoulder_mid[:, None, :]
+    result = []
+    for frame in raw_frames:
+        # Desenvuelve dimensión de persona si existe: [[[x,y],...]] → [[x,y],...]
+        if isinstance(frame[0][0], list):
+            pts = frame[0]
+        else:
+            pts = frame  # ya es [[x,y], ...]
 
-    hip_mid = (xy[:, 11, :] + xy[:, 12, :]) / 2.0
-    scale   = np.linalg.norm(hip_mid, axis=-1)
-    scale   = np.clip(scale, 1e-8, None)
-    xy     /= scale[:, None, None]
+        n_pts = len(pts)
 
-    landmarks_flat = np.zeros((TMAX, INPUT_DIM), dtype=np.float32)
-    for t in range(min(T, TMAX)):
-        landmarks_flat[t] = xy[t].reshape(-1)
-    return landmarks_flat
+        if n_pts == 59:
+            # ── Caso A: ya tiene exactamente los 59 puntos filtrados ──────
+            # El JSON fue generado con _KEEP_IDX ya aplicado.
+            # Los puntos son [x, y] normalizados 0-1 relativos a la imagen.
+            # Aplicar solo centrado + escala (igual que preprocess).
+            xy = np.array([[p[0], p[1]] for p in pts], dtype=np.float32)  # (59, 2)
 
+            shoulder_mid = (xy[5] + xy[6]) / 2.0
+            xy -= shoulder_mid
+
+            hip_mid = (xy[11] + xy[12]) / 2.0
+            scale   = float(np.linalg.norm(hip_mid))
+            if scale < 1e-8:
+                scale = 1.0
+            xy /= scale
+
+            result.append(xy.tolist())
+
+        elif n_pts >= 133:
+            # ── Caso B: 133 puntos completos (con cara y pies) ────────────
+            # Aplicar _KEEP_IDX primero, luego normalizar.
+            xy_full = np.array([[p[0], p[1]] for p in pts[:133]], dtype=np.float32)
+            xy      = xy_full[_KEEP_IDX]  # (59, 2)
+
+            shoulder_mid = (xy[5] + xy[6]) / 2.0
+            xy -= shoulder_mid
+
+            hip_mid = (xy[11] + xy[12]) / 2.0
+            scale   = float(np.linalg.norm(hip_mid))
+            if scale < 1e-8:
+                scale = 1.0
+            xy /= scale
+
+            result.append(xy.tolist())
+
+        else:
+            print(f"  [warn] frame con {n_pts} puntos inesperados, saltando")
+            continue
+
+    print(f"  Landmarks procesados: {len(result)} frames de {len(raw_frames)} para '{glosa}'")
+    return result
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Startup resource loading
@@ -170,6 +226,8 @@ def preprocess_landmarks(kpt_seq: np.ndarray, det_seq: np.ndarray):
 def load_resources():
     global ort_session, input_name, labels, rtm_detector
 
+    # ── Landmarks pre-calculados ─────────────────────────────────────────────
+    load_landmarks_db()
     # ── RTMPose ──────────────────────────────────────────────────────────────
     try:
         print("Cargando RTMPose…")
@@ -358,7 +416,7 @@ def infer():
         kpt_seq = np.stack(kpt_list, axis=0)
         det_seq = np.array(det_list, dtype=bool)
 
-        x_preprocessed = preprocess_landmarks(kpt_seq, det_seq)
+        x_preprocessed, norm_xy = preprocess_landmarks(kpt_seq, det_seq)
         x               = x_preprocessed[np.newaxis, ...]
 
         ort_inputs  = {input_name: x}
@@ -378,12 +436,17 @@ def infer():
             for i in top3_idx
         ]
 
+        T_real = min(len(kpt_list), 200)
+        landmarks_out = norm_xy[:T_real].tolist()   # ← list of (T, 59, 2)
+        predicted_glosa = labels[top_idx] if top_idx < len(labels) else "clase_{top_idx}"
+        print(predicted_glosa)
         return jsonify({
-            "glosa":      labels[top_idx] if top_idx < len(labels) else f"clase_{top_idx}",
+            "glosa":      predicted_glosa,
             "conf":       top_conf,
             "end_prob":   end_prob,
             "top3":       top3,
             "num_frames": len(kpt_list),
+            "landmarks":  _get_landmarks_for_glosa(predicted_glosa),
         })
 
     except Exception as exc:
@@ -420,8 +483,62 @@ def tts():
     except Exception as exc:
         import traceback; traceback.print_exc()
         return jsonify({"error": str(exc)}), 500
-    
+
+@app.route("/landmarks", methods=["POST"])
+def get_landmarks():
+    """
+    Body JSON: { "glosa": str }
+    Response:  { "landmarks": [[59x[x,y]], ...], "glosa": str }
+    Busca la glosa en el JSON pre-calculado y devuelve sus frames normalizados.
+    """
+    data  = request.get_json(force=True)
+    glosa = (data or {}).get("glosa", "").strip()
+    if not glosa:
+        return jsonify({"error": "Campo 'glosa' vacío"}), 400
+
+    frames = _get_landmarks_for_glosa(glosa)
+
+    return jsonify({"glosa": glosa, "landmarks": frames, "found": len(frames) > 0})
+
+def preprocess_landmarks(kpt_seq: np.ndarray, det_seq: np.ndarray):
+    TMAX = 200
+    T    = kpt_seq.shape[0]
+
+    kpts   = kpt_seq[:, _KEEP_IDX, :]   # (T, 59, 3)
+    xy     = kpts[:, :, :2].copy()
+    scores = kpts[:, :, 2]
+    xy[scores < 0.3] = 0.0
+
+    shoulder_mid = (xy[:, 5, :] + xy[:, 6, :]) / 2.0
+    xy -= shoulder_mid[:, None, :]
+
+    hip_mid = (xy[:, 11, :] + xy[:, 12, :]) / 2.0
+    scale   = np.linalg.norm(hip_mid, axis=-1)
+    scale   = np.clip(scale, 1e-8, None)
+    xy     /= scale[:, None, None]
+
+    landmarks_flat = np.zeros((TMAX, INPUT_DIM), dtype=np.float32)
+    norm_xy = np.zeros((TMAX, N_KPT_MODEL, 2), dtype=np.float32)  # ← NEW
+    for t in range(min(T, TMAX)):
+        landmarks_flat[t] = xy[t].reshape(-1)
+        norm_xy[t] = xy[t]                                          # ← NEW
+
+    return landmarks_flat, norm_xy                                  # ← NEW:    
 # ─────────────────────────────────────────────────────────────────────────────
+import unicodedata
+import re
+
+def _normalize(s: str) -> str:
+    """Lowercase, strip accents, remove punctuation and numbers."""
+    s = s.strip().lower()
+    # Eliminar acentos
+    s = unicodedata.normalize('NFD', s)
+    s = ''.join(c for c in s if unicodedata.category(c) != 'Mn')
+    # Eliminar números, comas, puntos y espacios extra
+    s = re.sub(r'[0-9,.\-_]+', '', s)
+    s = s.strip()
+    return s
+# ----------------------------------------
 if __name__ == "__main__":
     print("=" * 60)
     print("🤟  LSM Recognizer + Translator — Servidor Web")

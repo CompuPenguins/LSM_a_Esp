@@ -632,22 +632,18 @@
         <!-- 1. Avatar -->
         <div class="result-section">
           <div class="result-section-label">
-            <span class="rsl-glosa">VER · SEÑA · MODELO</span>
-            <span class="rsl-text">🤖 Seña en 3D</span>
+            <span class="rsl-glosa">VER · SEÑA · PUNTOS</span>
+            <span class="rsl-text">🖐️ Animación de puntos</span>
           </div>
-          <div class="avatar-box">
-            <div class="avatar-placeholder">
-              <span class="big">🖐️</span>
-              <span class="ap-glosa">MODELO · BLENDER · AQUÍ</span>
-              <span>Modelo 3D aparecerá aquí</span>
-            </div>
+          <div class="avatar-box" style="background:#0a0c11;">
+            <canvas id="sordo-canvas" style="width:100%;height:100%;display:block;"></canvas>
           </div>
           <div class="avatar-controls">
-            <button class="play-btn amber">
+            <button class="play-btn amber" id="sordo-play-btn" onclick="toggleAnimation('sordo')">
               <span class="pb-glosa">VER · REPRODUCIR</span>
               ▶ Reproducir
             </button>
-            <button class="speed-btn">1×</button>
+            <button class="speed-btn" id="sordo-speed-btn" onclick="cycleSpeed('sordo')">1×</button>
           </div>
         </div>
 
@@ -771,22 +767,18 @@
         <!-- 1. Avatar -->
         <div class="result-section">
           <div class="result-section-label">
-            <span class="rsl-glosa">VER · SEÑA · MODELO</span>
-            <span class="rsl-text">🤖 Seña en 3D</span>
+            <span class="rsl-glosa">VER · SEÑA · PUNTOS</span>
+            <span class="rsl-text">🖐️ Animación de puntos</span>
           </div>
-          <div class="avatar-box">
-            <div class="avatar-placeholder">
-              <span class="big">🖐️</span>
-              <span class="ap-glosa">MODELO · BLENDER · AQUÍ</span>
-              <span>Modelo 3D aparecerá aquí</span>
-            </div>
+          <div class="avatar-box" style="background:#0a0c11;">
+            <canvas id="oyente-canvas" style="width:100%;height:100%;display:block;"></canvas>
           </div>
           <div class="avatar-controls">
-            <button class="play-btn">
+            <button class="play-btn" id="oyente-play-btn" onclick="toggleAnimation('oyente')">
               <span class="pb-glosa">VER · REPRODUCIR</span>
               ▶ Reproducir
             </button>
-            <button class="speed-btn">1×</button>
+            <button class="speed-btn" id="oyente-speed-btn" onclick="cycleSpeed('oyente')">1×</button>
           </div>
         </div>
 
@@ -900,6 +892,11 @@
   async function traducirSordo() {
     const text = document.getElementById('sordo-input').value.trim();
     if (!text) return;
+
+    // La glosa de entrada es lo que escribió la persona sorda
+    const rawInput    = text.toLowerCase().trim();           // para buscar en el JSON
+    const glosaWords  = text.toUpperCase().split(/\s+/).filter(Boolean);  // para mostrar chips
+
     try {
       const res  = await fetch('/translate', {
         method: 'POST', headers: {'Content-Type':'application/json'},
@@ -907,17 +904,22 @@
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      const glosaWords = text.toUpperCase().split(/\s+/).filter(Boolean);
       renderResultado('sordo', glosaWords, data.translation);
     } catch {
-      const words = GLOSA_SAMPLE.slice(0, Math.min(text.split(/\s+/).length + 2, GLOSA_SAMPLE.length));
-      renderResultado('sordo', words, '[Traducción del servidor]');
+      renderResultado('sordo', glosaWords, '[Traducción del servidor]');
     }
+
+    // Animar con los landmarks de lo que escribió la persona sorda,
+    // no con lo que predijo el modelo (eso solo aplica a la cámara)
+    await fetchAndAnimateGlosas('sordo', glosaWords, rawInput);
   }
 
   async function traducirOyente() {
     const text = document.getElementById('oyente-input').value.trim();
     if (!text) return;
+
+    let glosaWords = [];
+    let rawTranslation = '';
     try {
       const res  = await fetch('/translate', {
         method: 'POST', headers: {'Content-Type':'application/json'},
@@ -925,11 +927,17 @@
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      const glosaWords = data.translation.toUpperCase().split(/\s+/).filter(Boolean);
+      glosaWords = data.translation.toUpperCase().split(/\s+/).filter(Boolean);
+      rawTranslation = data.translation.toLowerCase().trim();
       renderResultado('oyente', glosaWords, text);
     } catch {
-      const words = GLOSA_SAMPLE.slice(0, Math.min(text.split(/\s+/).length + 2, GLOSA_SAMPLE.length));
-      renderResultado('oyente', words, text);
+      glosaWords = GLOSA_SAMPLE.slice(0, Math.min(text.split(/\s+/).length + 2, GLOSA_SAMPLE.length));
+      renderResultado('oyente', glosaWords, text);
+    }
+
+    // Fetch and play landmark animation — pass raw phrase + word list
+    if (glosaWords.length > 0) {
+      await fetchAndAnimateGlosas('oyente', glosaWords, rawTranslation);
     }
   }
 
@@ -1114,13 +1122,18 @@
 
           renderResultado('sordo', glosaWords, label);
 
-          // Also show top3 below in a subtle way
+          // Show top3 below in a subtle way
           const glosaEl = document.getElementById('sordo-glosa-out');
           if (data.top3 && data.top3.length > 1) {
             const extras = data.top3.slice(1).map(([g, p]) =>
               `<span class="glosa-chip" style="opacity:0.5;font-size:0.7rem">${g} ${(p*100).toFixed(0)}%</span>`
             ).join('');
             glosaEl.innerHTML += ' ' + extras;
+          }
+
+          // Load landmarks into animator
+          if (data.landmarks && data.landmarks.length > 0) {
+            setLandmarkFrames('sordo', data.landmarks);
           }
 
         } catch (err) {
@@ -1304,6 +1317,334 @@
     previewCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     setMicState('idle');
   });
+  // ── Landmark Animator ─────────────────────────────────────────────────
+  // Skeleton connections — indices into the 59-point array
+  const BODY_CONNECTIONS = [
+    [0,1],[1,2],[2,3],[3,4],
+    [0,5],[5,6],[6,7],[7,8],
+    [9,10],
+    [0,9],[0,10],
+    [5,9],[6,10],
+  ];
+  function handConnections(offset) {
+    return [
+      [0,1],[1,2],[2,3],[3,4],
+      [0,5],[5,6],[6,7],[7,8],
+      [0,9],[9,10],[10,11],[11,12],
+      [0,13],[13,14],[14,15],[15,16],
+      [0,17],[17,18],[18,19],[19,20],
+      [5,9],[9,13],[13,17],
+    ].map(([a,b]) => [a+offset, b+offset]);
+  }
+  const LEFT_HAND_CONN  = handConnections(17);
+  const RIGHT_HAND_CONN = handConnections(38);
+
+  // Per-who animation state
+  const _anim = {
+    sordo:  { frames: [], frameIdx: 0, rafId: null, speed: 1, playing: false,
+              glosaQueue: [], glosaIdx: 0, autoPlay: false },
+    oyente: { frames: [], frameIdx: 0, rafId: null, speed: 1, playing: false,
+              glosaQueue: [], glosaIdx: 0, autoPlay: false },
+  };
+  const SPEEDS = [0.5, 1, 1.5, 2];
+
+  // ── Fetch landmarks for a list of glosas and play them in sequence ──────
+  // Helper: fetch landmarks for a single glosa string from /landmarks
+  async function _fetchLandmarks(glosa) {
+    const res  = await fetch('/landmarks', {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ glosa }),
+    });
+    const data = await res.json();
+    if (data.landmarks && data.landmarks.length > 0) {
+      const T  = data.landmarks.length;
+      const P  = data.landmarks[0]?.length  ?? '?';
+      const XY = data.landmarks[0]?.[0]?.length ?? '?';
+      console.log('[landmarks] "' + glosa + '" shape: (' + T + ' frames x ' + P + ' puntos x ' + XY + ' coords)');
+      return data.landmarks;
+    }
+    console.warn('[landmarks] "' + glosa + '" NO encontrado.');
+    return null;
+  }
+
+  // Fetch landmarks for a translation and animate in sequence.
+  // Strategy:
+  //   1. Try the full phrase (rawPhrase) as one entry — covers multi-word glosas like "buenos dias"
+  //   2. For each individual word not covered by step 1, try it separately
+  //   rawPhrase is the raw lowercased translation string from the server.
+  //   glosaWords is the array of uppercased individual words (for display chips).
+  async function fetchAndAnimateGlosas(who, glosaWords, rawPhrase) {
+    const st = _anim[who];
+    cancelAnimationFrame(st.rafId);
+    st.playing    = false;
+    st.glosaQueue = [];
+    st.glosaIdx   = 0;
+
+    _drawCanvasMessage(who, '⏳ Cargando animación…');
+
+    const queue = [];
+
+    // ── Step 1: try the full phrase first ──────────────────────────────
+    if (rawPhrase) {
+      try {
+        const frames = await _fetchLandmarks(rawPhrase);
+        if (frames) {
+          // Full phrase found — use it as a single animation clip
+          queue.push({ glosa: rawPhrase.toUpperCase(), frames });
+        }
+      } catch (err) {
+        console.warn('[landmarks] error buscando frase completa:', err);
+      }
+    }
+
+    // ── Step 2: if full phrase not found, try each word individually ───
+    if (!queue.length) {
+      for (const glosa of glosaWords) {
+        try {
+          const frames = await _fetchLandmarks(glosa.toLowerCase());
+          if (frames) {
+            queue.push({ glosa, frames });
+          } else {
+            // Also try uppercase (some JSON keys may be uppercase)
+            const framesUp = await _fetchLandmarks(glosa);
+            if (framesUp) queue.push({ glosa, frames: framesUp });
+          }
+        } catch (err) {
+          console.error('[landmarks] error de red para "' + glosa + '":', err);
+        }
+      }
+    }
+
+    if (!queue.length) {
+      _drawCanvasMessage(who, '⚠ Sin animación para estas glosas');
+      _updatePlayBtn(who, false);
+      return;
+    }
+
+    st.glosaQueue = queue;
+    st.glosaIdx   = 0;
+    st.autoPlay   = true;
+    _loadQueueFrame(who, 0);
+    _playSequence(who);
+  }
+
+  // Load a specific glosa from the queue into st.frames
+  function _loadQueueFrame(who, qIdx) {
+    const st   = _anim[who];
+    const item = st.glosaQueue[qIdx];
+    if (!item) return;
+    st.frames   = item.frames;
+    st.frameIdx = 0;
+    _drawGlosaLabel(who, item.glosa, qIdx + 1, st.glosaQueue.length);
+    // Two rAF ticks so the DOM renders the result-block before we draw,
+    // otherwise canvas.offsetWidth is 0 and drawFrame does nothing.
+    requestAnimationFrame(() => requestAnimationFrame(() => drawFrame(who, 0)));
+  }
+
+  // Play all glosas in sequence, then stop
+  function _playSequence(who) {
+    const st = _anim[who];
+    if (!st.glosaQueue.length) return;
+    st.playing = true;
+    _updatePlayBtn(who, true);
+
+    const FPS_MS = () => (1000 / 30) / st.speed;
+    let last = 0;
+
+    const step = (ts) => {
+      if (!st.playing) return;
+
+      if (ts - last >= FPS_MS()) {
+        last = ts;
+        drawFrame(who, st.frameIdx);
+        st.frameIdx++;
+
+        // Finished current glosa → advance to next
+        if (st.frameIdx >= st.frames.length) {
+          st.glosaIdx++;
+          if (st.glosaIdx < st.glosaQueue.length) {
+            _loadQueueFrame(who, st.glosaIdx);
+          } else {
+            // All glosas done — stop and reset to first
+            st.playing  = false;
+            st.glosaIdx = 0;
+            _loadQueueFrame(who, 0);
+            _updatePlayBtn(who, false);
+            return;
+          }
+        }
+      }
+      st.rafId = requestAnimationFrame(step);
+    };
+    st.rafId = requestAnimationFrame(step);
+  }
+
+  function setLandmarkFrames(who, landmarks) {
+    const st = _anim[who];
+    cancelAnimationFrame(st.rafId);
+    st.glosaQueue = [];
+    st.frames     = landmarks;
+    st.frameIdx   = 0;
+    st.playing    = false;
+    _updatePlayBtn(who, false);
+    if (landmarks.length > 0) drawFrame(who, 0);
+  }
+
+  function toggleAnimation(who) {
+    const st = _anim[who];
+
+    // If we have a queue (oyente flow) → play/pause the sequence
+    if (st.glosaQueue.length > 0) {
+      if (st.playing) {
+        st.playing = false;
+        cancelAnimationFrame(st.rafId);
+        _updatePlayBtn(who, false);
+      } else {
+        _playSequence(who);
+      }
+      return;
+    }
+
+    // Single-clip mode (sordo infer flow)
+    if (!st.frames.length) return;
+    st.playing = !st.playing;
+    _updatePlayBtn(who, st.playing);
+    if (st.playing) {
+      const FPS_MS = () => (1000 / 30) / st.speed;
+      let last = 0;
+      const step = (ts) => {
+        if (!st.playing) return;
+        if (ts - last >= FPS_MS()) {
+          last = ts;
+          drawFrame(who, st.frameIdx);
+          st.frameIdx = (st.frameIdx + 1) % st.frames.length;
+        }
+        st.rafId = requestAnimationFrame(step);
+      };
+      st.rafId = requestAnimationFrame(step);
+    } else {
+      cancelAnimationFrame(st.rafId);
+    }
+  }
+
+  function cycleSpeed(who) {
+    const st  = _anim[who];
+    const idx = SPEEDS.indexOf(st.speed);
+    st.speed  = SPEEDS[(idx + 1) % SPEEDS.length];
+    document.getElementById(who + '-speed-btn').textContent = st.speed + '×';
+  }
+
+  function _updatePlayBtn(who, playing) {
+    const btn = document.getElementById(who + '-play-btn');
+    if (!btn) return;
+    const label = btn.childNodes[btn.childNodes.length - 1];
+    if (label) label.textContent = playing ? ' ⏸ Pausar' : ' ▶ Reproducir';
+  }
+
+  function _drawCanvasMessage(who, msg) {
+    const canvas = document.getElementById(who + '-canvas');
+    if (!canvas) return;
+    const draw = () => {
+      const W = canvas.offsetWidth || 320;
+      const H = canvas.offsetHeight || 240;
+      canvas.width = W; canvas.height = H;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = 'rgba(122,128,153,0.7)';
+      ctx.font = '14px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.fillText(msg, W / 2, H / 2);
+      ctx.textAlign = 'left';
+    };
+    // If canvas has no size yet (block just became visible), wait a tick
+    if (canvas.offsetWidth === 0) {
+      requestAnimationFrame(() => requestAnimationFrame(draw));
+    } else {
+      draw();
+    }
+  }
+
+  function _drawGlosaLabel(who, glosa, idx, total) {
+    const canvas = document.getElementById(who + '-canvas');
+    if (!canvas) return;
+    // Will be drawn on next drawFrame call — store for overlay
+    _anim[who]._label = total > 1 ? `${glosa}  (${idx}/${total})` : glosa;
+  }
+
+  function drawFrame(who, frameIdx) {
+    const canvas = document.getElementById(who + '-canvas');
+    if (!canvas) return;
+    const pts = _anim[who].frames[frameIdx];
+    if (!pts) return;
+
+    const W = canvas.offsetWidth  || 320;
+    const H = canvas.offsetHeight || 240;
+    if (canvas.width !== W)  canvas.width  = W;
+    if (canvas.height !== H) canvas.height = H;
+
+    const ctx = canvas.getContext('2d');
+    ctx.clearRect(0, 0, W, H);
+
+    const scale = H / 3.2;
+    const ox    = W / 2;
+    const oy    = H * 0.35;
+
+    const px = (i) => ox + pts[i][0] * scale;
+    const py = (i) => oy + pts[i][1] * scale;
+
+    function drawConns(conns, color) {
+      ctx.strokeStyle = color;
+      ctx.lineWidth   = 2;
+      ctx.lineCap     = 'round';
+      for (const [a, b] of conns) {
+        if (!pts[a] || !pts[b]) continue;
+        if (pts[a][0] === 0 && pts[a][1] === 0) continue;
+        if (pts[b][0] === 0 && pts[b][1] === 0) continue;
+        ctx.beginPath();
+        ctx.moveTo(px(a), py(a));
+        ctx.lineTo(px(b), py(b));
+        ctx.stroke();
+      }
+    }
+
+    function drawDots(indices, color, r) {
+      ctx.fillStyle = color;
+      for (const i of indices) {
+        if (!pts[i]) continue;
+        if (pts[i][0] === 0 && pts[i][1] === 0) continue;
+        ctx.beginPath();
+        ctx.arc(px(i), py(i), r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Body (amber)
+    drawConns(BODY_CONNECTIONS, 'rgba(232,160,69,0.7)');
+    drawDots(Array.from({length:17}, (_,i) => i), '#e8a045', 3.5);
+
+    // Left hand (teal)
+    drawConns(LEFT_HAND_CONN, 'rgba(62,207,176,0.8)');
+    drawDots(Array.from({length:21}, (_,i) => i+17), '#3ecfb0', 3);
+
+    // Right hand (lighter teal)
+    drawConns(RIGHT_HAND_CONN, 'rgba(62,207,176,0.55)');
+    drawDots(Array.from({length:21}, (_,i) => i+38), '#7eddd0', 3);
+
+    // Glosa label overlay (top-left)
+    const label = _anim[who]._label;
+    if (label) {
+      ctx.font      = 'bold 13px monospace';
+      ctx.fillStyle = 'rgba(232,160,69,0.9)';
+      ctx.fillText(label, 10, 20);
+    }
+
+    // Frame counter (bottom-left, subtle)
+    ctx.fillStyle = 'rgba(122,128,153,0.45)';
+    ctx.font      = '10px monospace';
+    ctx.fillText(`${frameIdx + 1}/${_anim[who].frames.length}`, 8, H - 6);
+  }
+
   </script>
 </body>
 </html>
