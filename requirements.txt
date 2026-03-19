@@ -4,8 +4,10 @@ numpy
 pandas
 pyarrow==17.0.0
 rtmlib==0.0.13
+onnx
 onnxruntime==1.20.1
 tqdm==4.67.1
 matplotlib==3.9.2
 seaborn==0.13.2
 ipykernel==6.29.5
+umap-learn==0.5.7
