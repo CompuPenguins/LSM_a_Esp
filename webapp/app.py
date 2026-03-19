@@ -34,8 +34,8 @@ app = Flask(__name__)
 MODEL_PATH      = os.environ.get("MODEL_PATH",      "model.onnx")
 LABELS_PATH     = os.environ.get("LABELS_PATH",     "glosa_labels.json")
 CKPT_PATH       = os.environ.get("CKPT_PATH",       "best_model.ptrom")
-ESP_TO_LSM_DIR  = os.environ.get("ESP_TO_LSM_DIR",  "../translator/esp_to_lsm")
-LSM_TO_ESP_DIR  = os.environ.get("LSM_TO_ESP_DIR",  "../translator/lsm_to_esp")
+ESP_TO_LSM_DIR  = os.environ.get("ESP_TO_LSM_DIR",  "./translator/esp_to_lsm")
+LSM_TO_ESP_DIR  = os.environ.get("LSM_TO_ESP_DIR",  "./translator/lsm_to_esp")
 
 # ─── Estado global ────────────────────────────────────────────────────────────
 ort_session     = None
@@ -110,7 +110,7 @@ def _load_whisper():
 
 def transcribe_audio(audio_bytes: bytes, mime: str) -> str:
     """Transcribe raw audio bytes to Spanish text using faster-whisper."""
-    import tempfile, pathlib
+    import tempfile, pathlib, subprocess
     ext = ".webm"
     if "ogg" in mime:  ext = ".ogg"
     elif "wav" in mime: ext = ".wav"
@@ -392,6 +392,35 @@ def infer():
         return jsonify({"error": str(exc)}), 500
 
 
+@app.route("/tts", methods=["POST"])
+def tts():
+    """
+    Body JSON: { "text": str }
+    Response:  audio/mpeg stream
+    """
+    data = request.get_json(force=True)
+    text = (data or {}).get("text", "").strip()
+    if not text:
+        return jsonify({"error": "Texto vacío"}), 400
+    try:
+        from gtts import gTTS
+        import io
+
+        # Prepend a short pause so the first word isn't clipped.
+        # A leading comma makes gTTS insert ~300 ms of silence at the start.
+        padded_text = ", " + text
+
+        tts_obj = gTTS(text=padded_text, lang="es", slow=False)
+        buf = io.BytesIO()
+        tts_obj.write_to_fp(buf)
+        buf.seek(0)
+
+        from flask import Response
+        return Response(buf.read(), mimetype="audio/mpeg")
+    except Exception as exc:
+        import traceback; traceback.print_exc()
+        return jsonify({"error": str(exc)}), 500
+    
 # ─────────────────────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     print("=" * 60)
