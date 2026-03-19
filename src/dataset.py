@@ -1,559 +1,776 @@
+# """
+# src/dataset.py
+# ==============
+# Dataset, constantes globales, collate_fn y split_dataset para LSM.
+
+# Constantes exportadas (usadas en train.py y augmentations.py):
+#     TMAX        = 200   — longitud máxima de secuencia en frames
+#     N_LANDMARKS = 133   — keypoints COCO-WholeBody
+#     INPUT_DIM   = 266   — 133 × 2 (x, y — sin score)
+
+# Funciones exportadas:
+#     split_dataset(parquet_path, ...)  → (train_ds, val_ds, test_ds)
+#     collate_fn(batch)                 → dict de tensores con padding dinámico
+
+# Clase exportada:
+#     LSMDataset
+#         .num_classes          : int
+#         .glosa2idx            : dict[str, int]
+#         .idx2glosa            : dict[int, str]
+#         .get_label_weights()  : Tensor (num_classes,)
+# """
+
+# from __future__ import annotations
+
+# import io
+# from pathlib import Path
+# from typing import Callable, Dict, List, Optional, Tuple
+
+# import numpy as np
+# import pandas as pd
+# import torch
+# from torch import Tensor
+# from torch.utils.data import Dataset
+
+
+# # ─────────────────────────────────────────────────────────────────────────────
+# # Constantes globales
+# # ─────────────────────────────────────────────────────────────────────────────
+
+# TMAX        : int = 200              # frames máximos por secuencia
+# N_LANDMARKS : int = 133              # keypoints COCO-WholeBody
+# INPUT_DIM   : int = N_LANDMARKS * 2  # 266  (x, y — score ignorado)
+
+
+# # ─────────────────────────────────────────────────────────────────────────────
+# # Preprocesamiento de keypoints
+# # ─────────────────────────────────────────────────────────────────────────────
+
+# def preprocess(
+#     kpts: np.ndarray,           # (T, 133, 3)  float32
+#     score_thresh: float = 0.3,
+# ) -> np.ndarray:
+#     """
+#     1. Anula landmarks con score < umbral.
+#     2. Centra respecto al punto medio de los hombros (kpts 5, 6).
+#     3. Escala por distancia hombro → cadera (kpts 11, 12).
+
+#     Returns: (T, 133, 2)  float32  — solo x, y normalizados
+#     """
+#     xy     = kpts[:, :, :2].copy()   # (T, 133, 2)
+#     scores = kpts[:, :, 2]           # (T, 133)
+
+#     # Anular landmarks poco confiables
+#     low = scores < score_thresh
+#     xy[low] = 0.0
+
+#     # Centrado en hombros
+#     shoulder_mid = (xy[:, 5, :] + xy[:, 6, :]) / 2.0   # (T, 2)
+#     xy -= shoulder_mid[:, None, :]
+
+#     # Escalado por altura torso
+#     hip_mid = (xy[:, 11, :] + xy[:, 12, :]) / 2.0       # (T, 2)
+#     scale   = np.linalg.norm(hip_mid, axis=-1)            # (T,)
+#     scale   = np.clip(scale, 1e-8, None)
+#     xy     /= scale[:, None, None]
+
+#     return xy.astype(np.float32)                          # (T, 133, 2)
+
+
+# # ─────────────────────────────────────────────────────────────────────────────
+# # LSMDataset
+# # ─────────────────────────────────────────────────────────────────────────────
+
+# class LSMDataset(Dataset):
+#     """
+#     Carga secuencias de landmarks LSM desde un DataFrame ya filtrado al split.
+
+#     Parquet schema esperado:
+#         glosa          : str
+#         intento        : int
+#         video_id       : str
+#         fps            : float
+#         total_frames   : int
+#         width, height  : int
+#         keypoints      : bytes  →  np.ndarray float32 (T, 133, 3)
+#         person_detected: bytes  →  np.ndarray bool    (T,)
+
+#     Parámetros
+#     ----------
+#     df           : DataFrame del split correspondiente
+#     glosa2idx    : dict str → int  (compartido entre train/val/test)
+#     augmenter    : callable (T,133,3) → (T,133,3) ó None
+#     score_thresh : umbral de confianza para filtrar landmarks
+#     tmax         : longitud máxima de secuencia
+#     return_aug   : si True, añade 'keypoints_aug' al item (para AimCLR)
+#     view_gen     : callable (T,133,3) → (T,133,3) para la vista contrastiva
+#     """
+
+#     def __init__(
+#         self,
+#         df:           pd.DataFrame,
+#         glosa2idx:    Dict[str, int],
+#         augmenter:    Optional[Callable]  = None,
+#         score_thresh: float               = 0.3,
+#         tmax:         int                 = TMAX,
+#         return_aug:   bool                = False,
+#         view_gen:     Optional[Callable]  = None,
+#     ):
+#         self.df           = df.reset_index(drop=True)
+#         self.glosa2idx    = glosa2idx
+#         self.idx2glosa    = {v: k for k, v in glosa2idx.items()}
+#         self.num_classes  = len(glosa2idx)
+#         self.augmenter    = augmenter
+#         self.score_thresh = score_thresh
+#         self.tmax         = tmax
+#         self.return_aug   = return_aug
+#         self.view_gen     = view_gen
+
+#     # ── utilidades ────────────────────────────────────────────────────────────
+
+#     def _load_kpts(self, row) -> np.ndarray:
+#         """Deserializa bytes → (T, 133, 3) float32."""
+#         buf = io.BytesIO(row["keypoints"])
+#         return np.load(buf)                              # (T, 133, 3)
+
+#     def get_label_weights(self) -> Tensor:
+#         """
+#         Pesos inversos de frecuencia por clase para CrossEntropyLoss.
+#         Clases más raras reciben mayor peso.
+#         Returns: Tensor (num_classes,) float32
+#         """
+#         labels = self.df["glosa"].map(self.glosa2idx).values
+#         counts = np.bincount(labels, minlength=self.num_classes).astype(np.float32)
+#         counts = np.clip(counts, 1, None)
+#         weights = 1.0 / counts
+#         weights = weights / weights.sum() * self.num_classes   # escala a media=1
+#         return torch.from_numpy(weights)
+
+#     # ── Dataset API ───────────────────────────────────────────────────────────
+
+#     def __len__(self) -> int:
+#         return len(self.df)
+
+#     def __getitem__(self, idx: int) -> Dict:
+#         row      = self.df.iloc[idx]
+#         kpts_raw = self._load_kpts(row)                  # (T, 133, 3)
+
+#         # Aumentación anatómica sobre los datos crudos (antes de normalizar)
+#         if self.augmenter is not None:
+#             kpts_proc = self.augmenter(kpts_raw)
+#         else:
+#             kpts_proc = kpts_raw
+
+#         # Preprocesar: normalizar y quitar score → (T, 133, 2)
+#         xy    = preprocess(kpts_proc, self.score_thresh)  # (T, 133, 2)
+#         T     = min(xy.shape[0], self.tmax)
+#         xy_flat = xy[:T].reshape(T, INPUT_DIM)            # (T, 266)
+
+#         label    = int(self.glosa2idx[row["glosa"]])
+#         video_id = str(row.get("video_id", idx))
+
+#         item = {
+#             "keypoints": torch.from_numpy(xy_flat),      # (T, 266) longitud variable
+#             "label":     torch.tensor(label, dtype=torch.long),
+#             "video_id":  video_id,
+#             "T":         T,
+#         }
+
+#         # Vista AimCLR: segunda vista extrema de los mismos datos crudos
+#         if self.return_aug and self.view_gen is not None:
+#             kpts_aug   = self.view_gen(kpts_raw)          # (T, 133, 3)
+#             xy_aug     = preprocess(kpts_aug, self.score_thresh)
+#             xy_aug_flat = xy_aug[:T].reshape(T, INPUT_DIM)
+#             item["keypoints_aug"] = torch.from_numpy(xy_aug_flat)  # (T, 266)
+
+#         return item
+
+
+# # ─────────────────────────────────────────────────────────────────────────────
+# # collate_fn — padding dinámico al máximo del batch
+# # ─────────────────────────────────────────────────────────────────────────────
+
+# def collate_fn(batch: List[Dict]) -> Dict:
+#     """
+#     Agrupa una lista de items en un batch con padding dinámico.
+#     Rellena hasta la secuencia más larga del batch (no hasta TMAX global),
+#     lo que ahorra memoria y cómputo en batches de secuencias cortas.
+
+#     Returns dict con:
+#         keypoints   : (B, T_max_batch, 266)  float32
+#         valid_mask  : (B, T_max_batch)        bool  — True = frame real
+#         label       : (B,)                    int64
+#         video_id    : List[str]
+#         keypoints_aug (si existe): (B, T_max_batch, 266)
+#     """
+#     T_max = max(item["T"] for item in batch)
+#     B     = len(batch)
+
+#     kpts_padded = torch.zeros(B, T_max, INPUT_DIM, dtype=torch.float32)
+#     valid_mask  = torch.zeros(B, T_max, dtype=torch.bool)
+#     labels      = torch.stack([item["label"] for item in batch])
+#     video_ids   = [item["video_id"] for item in batch]
+
+#     has_aug    = "keypoints_aug" in batch[0]
+#     aug_padded = torch.zeros(B, T_max, INPUT_DIM, dtype=torch.float32) if has_aug else None
+
+#     for i, item in enumerate(batch):
+#         T = item["T"]
+#         kpts_padded[i, :T] = item["keypoints"]
+#         valid_mask[i,  :T] = True
+#         if has_aug:
+#             aug_padded[i, :T] = item["keypoints_aug"]
+
+#     out = {
+#         "keypoints":  kpts_padded,   # (B, T_max, 266)
+#         "valid_mask": valid_mask,     # (B, T_max)
+#         "label":      labels,         # (B,)
+#         "video_id":   video_ids,
+#     }
+#     if has_aug:
+#         out["keypoints_aug"] = aug_padded
+
+#     return out
+
+
+# # ─────────────────────────────────────────────────────────────────────────────
+# # split_dataset — punto de entrada principal desde train.py
+# # ─────────────────────────────────────────────────────────────────────────────
+
+# def split_dataset(
+#     parquet_path:  str,
+#     train_ratio:   float              = 0.70,
+#     val_ratio:     float              = 0.15,
+#     seed:          int                = 42,
+#     augment_train: Optional[Callable] = None,
+#     score_thresh:  float              = 0.3,
+#     tmax:          int                = TMAX,
+#     view_gen:      Optional[Callable] = None,
+# ) -> Tuple[LSMDataset, LSMDataset, LSMDataset]:
+#     """
+#     Carga el parquet, construye vocabulario de glosas y divide en
+#     train / val / test con split estratificado por glosa.
+
+#     Parámetros
+#     ----------
+#     parquet_path  : ruta al .parquet
+#     train_ratio   : fracción train  (0.70)
+#     val_ratio     : fracción val    (0.15)  → test = 1 - train - val
+#     seed          : semilla
+#     augment_train : LandmarkAugmenter ó None — solo aplicado en train
+#     score_thresh  : umbral confianza landmarks
+#     tmax          : longitud máxima de secuencia
+#     view_gen      : AimCLRViewGenerator ó None
+#                     Si se pasa, train incluye 'keypoints_aug' en cada item
+
+#     Returns
+#     -------
+#     (train_ds, val_ds, test_ds)
+#     """
+#     print(f"[split_dataset] Cargando {parquet_path} …")
+#     df = pd.read_parquet(parquet_path).reset_index(drop=True)
+
+#     # ── Vocabulario ───────────────────────────────────────────────────────────
+#     glosas_sorted = sorted(df["glosa"].unique().tolist())
+#     glosa2idx     = {g: i for i, g in enumerate(glosas_sorted)}
+#     num_classes   = len(glosa2idx)
+#     print(f"[split_dataset] {len(df)} videos | {num_classes} glosas únicas")
+
+#     # ── Split estratificado por glosa ─────────────────────────────────────────
+#     rng = np.random.default_rng(seed)
+#     train_idx, val_idx, test_idx = [], [], []
+
+#     for glosa, group in df.groupby("glosa"):
+#         idx = group.index.tolist()
+#         rng.shuffle(idx)
+#         n = len(idx)
+
+#         if n == 1:
+#             # Solo 1 muestra: va a train
+#             train_idx.extend(idx)
+#         elif n == 2:
+#             train_idx.append(idx[0])
+#             val_idx.append(idx[1])
+#         else:
+#             n_tr = max(1, int(round(n * train_ratio)))
+#             n_va = max(1, int(round(n * val_ratio)))
+#             n_te = max(0, n - n_tr - n_va)
+#             # Ajustar si la suma supera n
+#             while n_tr + n_va + n_te > n:
+#                 if n_te > 0:
+#                     n_te -= 1
+#                 elif n_va > 1:
+#                     n_va -= 1
+#                 else:
+#                     n_tr -= 1
+
+#             train_idx.extend(idx[:n_tr])
+#             val_idx.extend(idx[n_tr: n_tr + n_va])
+#             test_idx.extend(idx[n_tr + n_va: n_tr + n_va + n_te])
+
+#     df_train = df.loc[train_idx]
+#     df_val   = df.loc[val_idx]
+#     df_test  = df.loc[test_idx]
+
+#     print(
+#         f"[split_dataset] "
+#         f"train={len(df_train)} | val={len(df_val)} | test={len(df_test)}"
+#     )
+
+#     # ── Instanciar datasets ───────────────────────────────────────────────────
+#     train_ds = LSMDataset(
+#         df=df_train,
+#         glosa2idx=glosa2idx,
+#         augmenter=augment_train,
+#         score_thresh=score_thresh,
+#         tmax=tmax,
+#         return_aug=(view_gen is not None),
+#         view_gen=view_gen,
+#     )
+#     val_ds = LSMDataset(
+#         df=df_val,
+#         glosa2idx=glosa2idx,
+#         augmenter=None,
+#         score_thresh=score_thresh,
+#         tmax=tmax,
+#         return_aug=False,
+#     )
+#     test_ds = LSMDataset(
+#         df=df_test,
+#         glosa2idx=glosa2idx,
+#         augmenter=None,
+#         score_thresh=score_thresh,
+#         tmax=tmax,
+#         return_aug=False,
+#     )
+
+#     return train_ds, val_ds, test_ds
 """
 src/dataset.py
-──────────────────────────────────────────────────────────────────────────────
-Loader de landmarks LSM para PyTorch + splits robustos sin data leakage.
+==============
+Dataset, constantes globales, collate_fn y split_dataset para LSM.
 
-Contenido:
-  - LSMDataset              : torch.utils.data.Dataset que lee el parquet y
-                              devuelve tensores (keypoints, label, mask).
-  - collate_fn              : agrupa muestras de distinta duración (T variable)
-                              con padding y máscara de atención.
-  - inspect_signer_inference: diagnóstico — verifica si el prefijo de 2 dígitos
-                              del campo 'intento' identifica al señador.
-  - make_splits             : genera splits train/val/test robustos con dos
-                              estrategias: "by_signer" o "stratified".
+Constantes exportadas (usadas en train.py y augmentations.py):
+    TMAX        = 200   — longitud máxima de secuencia en frames
+    N_LANDMARKS = 133   — keypoints COCO-WholeBody
+    INPUT_DIM   = 266   — 133 × 2 (x, y — sin score)
 
-Convención del dataset (confirmada):
-    intento = "{señador_id:02d}{glosa_id:03d}"
-    Ej: "01001" → señador 01, glosa 001
-    → df["intento"].str[:2]  extrae el id de señador de forma fiable.
+Funciones exportadas:
+    split_dataset(parquet_path, ...)  → (train_ds, val_ds, test_ds)
+    collate_fn(batch)                 → dict de tensores con padding dinámico
 
-Uso rápido:
-    from src.dataset import LSMDataset, collate_fn, make_splits
-
-    train_ids, val_ids, test_ids = make_splits(
-        parquet_path="corpus_LSM_esp/lsm_dataset.parquet",
-        strategy="by_signer",   # o "stratified"
-        val_ratio=0.15,
-        test_ratio=0.15,
-        seed=42,
-    )
-
-    train_ds = LSMDataset("corpus_LSM_esp/lsm_dataset.parquet", video_ids=train_ids)
-    val_ds   = LSMDataset("corpus_LSM_esp/lsm_dataset.parquet", video_ids=val_ids)
-
-    train_loader = DataLoader(train_ds, batch_size=16,
-                              shuffle=True, collate_fn=collate_fn)
-
-Uso como script (diagnóstico + splits):
-    python src/dataset.py --parquet corpus_LSM_esp/lsm_dataset.parquet --diagnose
-    python src/dataset.py --parquet corpus_LSM_esp/lsm_dataset.parquet --save splits.json
+Clase exportada:
+    LSMDataset
+        .num_classes          : int
+        .glosa2idx            : dict[str, int]
+        .idx2glosa            : dict[int, str]
+        .get_label_weights()  : Tensor (num_classes,)
 """
 
 from __future__ import annotations
 
 import io
-import json
-import random
-from collections import defaultdict
 from pathlib import Path
-from typing import Literal
+from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 import pandas as pd
 import torch
+from torch import Tensor
 from torch.utils.data import Dataset
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-#  Constantes
-# ──────────────────────────────────────────────────────────────────────────────
-N_KPT  = 133   # keypoints COCO-WholeBody
-N_FEAT = 2     # x, y  (score descartado — no es [0,1] en RTMPose)
+# ─────────────────────────────────────────────────────────────────────────────
+# Constantes globales
+# ─────────────────────────────────────────────────────────────────────────────
 
+TMAX        : int = 200              # frames máximos por secuencia
+# N_LANDMARKS : int = 133              # keypoints COCO-WholeBody
+# INPUT_DIM   : int = N_LANDMARKS * 2  # 266  (x, y — score ignorado)
 
-# ──────────────────────────────────────────────────────────────────────────────
-#  Helpers de deserialización
-# ──────────────────────────────────────────────────────────────────────────────
-def _bytes_to_array(b: bytes) -> np.ndarray:
-    """Deserializa bytes guardados con np.save → ndarray."""
-    return np.load(io.BytesIO(b))
+_KEEP_IDX   = list(range(0, 17)) + list(range(91, 133))   # 59 landmarks
+N_LANDMARKS : int = len(_KEEP_IDX)   # 59
+INPUT_DIM   : int = N_LANDMARKS * 2
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Preprocesamiento de keypoints
+# ─────────────────────────────────────────────────────────────────────────────
 
-# ──────────────────────────────────────────────────────────────────────────────
-#  Dataset
-# ──────────────────────────────────────────────────────────────────────────────
+def preprocess(
+    kpts: np.ndarray,           # (T, 133, 3)  float32
+    score_thresh: float = 0.3,
+) -> np.ndarray:
+    # ── NUEVO: filtrar solo los landmarks útiles ──────────────────────────────
+    kpts = kpts[:, _KEEP_IDX, :]        # (T, 59, 3)
+    # Los índices de hombros y caderas cambian tras el filtrado:
+    # original 5,6 → new 5,6  (siguen siendo los mismos dentro de 0-16)
+    # original 11,12 → new 11,12  (ídem)
+    # ─────────────────────────────────────────────────────────────────────────
+
+    xy     = kpts[:, :, :2].copy()      # (T, 59, 2)
+    scores = kpts[:, :, 2]
+
+    low = scores < score_thresh
+    xy[low] = 0.0
+
+    shoulder_mid = (xy[:, 5, :] + xy[:, 6, :]) / 2.0
+    xy -= shoulder_mid[:, None, :]
+
+    hip_mid = (xy[:, 11, :] + xy[:, 12, :]) / 2.0
+    scale   = np.linalg.norm(hip_mid, axis=-1)
+    scale   = np.clip(scale, 1e-8, None)
+    xy     /= scale[:, None, None]
+
+    return xy.astype(np.float32)        # (T, 59, 2)
+    
+
+# ─────────────────────────────────────────────────────────────────────────────
+# LSMDataset
+# ─────────────────────────────────────────────────────────────────────────────
+
 class LSMDataset(Dataset):
     """
-    Dataset de landmarks LSM a partir de un archivo Parquet.
+    Carga secuencias de landmarks LSM desde un DataFrame ya filtrado al split.
 
-    Cada muestra devuelve un dict con:
-        "keypoints"  : FloatTensor  (T, 133, 3)   — x, y, score por frame
-        "label"      : LongTensor   ()             — índice de clase (glosa)
-        "video_id"   : str                         — identificador del video
-        "T"          : int                         — número real de frames
+    Parquet schema esperado:
+        glosa          : str
+        intento        : int
+        video_id       : str
+        fps            : float
+        total_frames   : int
+        width, height  : int
+        keypoints      : bytes  →  np.ndarray float32 (T, 133, 3)
+        person_detected: bytes  →  np.ndarray bool    (T,)
 
     Parámetros
     ----------
-    parquet_path : str | Path
-        Ruta al archivo Parquet generado por build_lsm_dataset.py.
-    video_ids : list[str] | None
-        Si se proporciona, filtra el dataset a esos video_ids (útil para splits).
-        Si es None, usa todos los registros.
-    normalize : bool
-        Si True, normaliza x e y al rango [0, 1] usando width/height del video.
-        El score (canal 2) no se modifica.
-    min_detection_ratio : float
-        Descarta muestras donde la fracción de frames con persona detectada
-        sea menor a este umbral. Default 0.0 (sin filtro).
-    label_col : str
-        Columna del parquet que contiene la etiqueta de clase. Default "glosa".
+    df           : DataFrame del split correspondiente
+    glosa2idx    : dict str → int  (compartido entre train/val/test)
+    augmenter    : callable (T,133,3) → (T,133,3) ó None
+    score_thresh : umbral de confianza para filtrar landmarks
+    tmax         : longitud máxima de secuencia
+    return_aug   : si True, añade 'keypoints_aug' al item (para AimCLR)
+    view_gen     : callable (T,133,3) → (T,133,3) para la vista contrastiva
     """
 
     def __init__(
         self,
-        parquet_path: str | Path,
-        video_ids: list[str] | None = None,
-        normalize: bool = True,
-        min_detection_ratio: float = 0.0,
-        label_col: str = "glosa",
-        augment=None,
+        df:           pd.DataFrame,
+        glosa2idx:    Dict[str, int],
+        augmenter:    Optional[Callable]  = None,
+        score_thresh: float               = 0.3,
+        tmax:         int                 = TMAX,
+        return_aug:   bool                = False,
+        view_gen:     Optional[Callable]  = None,
     ):
+        self.df           = df.reset_index(drop=True)
+        self.glosa2idx    = glosa2idx
+        self.idx2glosa    = {v: k for k, v in glosa2idx.items()}
+        self.num_classes  = len(glosa2idx)
+        self.augmenter    = augmenter
+        self.score_thresh = score_thresh
+        self.tmax         = tmax
+        self.return_aug   = return_aug
+        self.view_gen     = view_gen
+
+    # ── utilidades ────────────────────────────────────────────────────────────
+
+    def _load_kpts(self, row) -> np.ndarray:
+        """Deserializa bytes → (T, 133, 3) float32."""
+        buf = io.BytesIO(row["keypoints"])
+        return np.load(buf)                              # (T, 133, 3)
+
+    def get_label_weights(self) -> Tensor:
         """
-        augment : instancia de Compose (o cualquier callable (T,133,2)→(T,133,2))
-                  Si se pasa, se aplica on-the-fly en __getitem__ solo sobre x,y.
-                  Para val/test dejar en None.
+        Pesos inversos de frecuencia por clase para CrossEntropyLoss.
+        Clases más raras reciben mayor peso.
+        Returns: Tensor (num_classes,) float32
         """
-        self.parquet_path = Path(parquet_path)
-        self.normalize    = normalize
-        self.label_col    = label_col
-        self.augment      = augment
+        labels = self.df["glosa"].map(self.glosa2idx).values
+        counts = np.bincount(labels, minlength=self.num_classes).astype(np.float32)
+        counts = np.clip(counts, 1, None)
+        weights = 1.0 / counts
+        weights = weights / weights.sum() * self.num_classes   # escala a media=1
+        return torch.from_numpy(weights)
 
-        # ── Cargar tabla ──────────────────────────────────────
-        df = pd.read_parquet(self.parquet_path)
+    # ── Dataset API ───────────────────────────────────────────────────────────
 
-        # Filtrar por video_ids si se proveen
-        if video_ids is not None:
-            df = df[df["video_id"].isin(video_ids)].reset_index(drop=True)
-
-        # Filtrar por calidad de detección
-        if min_detection_ratio > 0.0:
-            df = self._filter_by_detection(df, min_detection_ratio)
-
-        self.df = df.reset_index(drop=True)
-
-        # ── Construir mapa label → índice entero ──────────────
-        labels_sorted = sorted(self.df[label_col].unique())
-        self.label2idx: dict[str, int] = {lbl: i for i, lbl in enumerate(labels_sorted)}
-        self.idx2label: list[str]      = labels_sorted
-
-        print(
-            f"LSMDataset cargado: {len(self.df)} muestras | "
-            f"{len(self.label2idx)} clases | "
-            f"normalize={normalize} | augment={'on' if augment else 'off'}"
-        )
-
-    # ── Helpers ───────────────────────────────────────────────
-    @staticmethod
-    def _filter_by_detection(df: pd.DataFrame, threshold: float) -> pd.DataFrame:
-        """Elimina filas donde muy pocos frames tienen persona detectada."""
-        def detection_ratio(row):
-            det = _bytes_to_array(row["person_detected"])  # bool (T,)
-            return det.mean()
-
-        ratios = df.apply(detection_ratio, axis=1)
-        before = len(df)
-        df = df[ratios >= threshold]
-        print(f"  Filtro detección ({threshold:.0%}): {before - len(df)} muestras eliminadas")
-        return df
-
-    # ── Dataset API ───────────────────────────────────────────
     def __len__(self) -> int:
         return len(self.df)
 
-    def __getitem__(self, idx: int) -> dict:
-        row = self.df.iloc[idx]
+    def __getitem__(self, idx: int) -> Dict:
+        row      = self.df.iloc[idx]
+        kpts_raw = self._load_kpts(row)                  # (T, 133, 3)
 
-        # Deserializar keypoints → (T, 133, 3)
-        kpts = _bytes_to_array(row["keypoints"]).astype(np.float32)  # (T, 133, 3)
+        # Aumentación anatómica sobre los datos crudos (antes de normalizar)
+        if self.augmenter is not None:
+            kpts_proc = self.augmenter(kpts_raw)
+        else:
+            kpts_proc = kpts_raw
 
-        # Normalizar coordenadas x, y al rango [0, 1]
-        if self.normalize:
-            w = float(row["width"])
-            h = float(row["height"])
-            if w > 0 and h > 0:
-                kpts[:, :, 0] /= w   # x
-                kpts[:, :, 1] /= h   # y
+        # Preprocesar: normalizar y quitar score → (T, 133, 2)
+        xy    = preprocess(kpts_proc, self.score_thresh)  # (T, 133, 2)
+        T     = min(xy.shape[0], self.tmax)
+        xy_flat = xy[:T].reshape(T, INPUT_DIM)            # (T, 266)
 
-        # Extraer solo x, y → (T, 133, 2)
-        # El canal score no es [0,1] en RTMPose — se maneja en el modelo
-        xy = kpts[:, :, :2]
+        label    = int(self.glosa2idx[row["glosa"]])
+        video_id = str(row.get("video_id", idx))
 
-        # Aplicar augmentaciones on-the-fly (solo en train)
-        if self.augment is not None:
-            xy = self.augment(xy)
-
-        label_str = row[self.label_col]
-        label_idx = self.label2idx[label_str]
-
-        return {
-            "keypoints": torch.from_numpy(xy.astype(np.float32)),  # (T, 133, 2)
-            "label":     torch.tensor(label_idx, dtype=torch.long),
-            "video_id":  row["video_id"],
-            "T":         xy.shape[0],
+        item = {
+            "keypoints": torch.from_numpy(xy_flat),      # (T, 266) longitud variable
+            "label":     torch.tensor(label, dtype=torch.long),
+            "video_id":  video_id,
+            "T":         T,
         }
 
-    @property
-    def num_classes(self) -> int:
-        return len(self.label2idx)
+        # Vista AimCLR: segunda vista extrema de los mismos datos crudos
+        if self.return_aug and self.view_gen is not None:
+            kpts_aug   = self.view_gen(kpts_raw)          # (T, 133, 3)
+            xy_aug     = preprocess(kpts_aug, self.score_thresh)
+            xy_aug_flat = xy_aug[:T].reshape(T, INPUT_DIM)
+            item["keypoints_aug"] = torch.from_numpy(xy_aug_flat)  # (T, 266)
+
+        return item
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-#  collate_fn  —  padding a longitud máxima del batch
-# ──────────────────────────────────────────────────────────────────────────────
-def collate_fn(batch: list[dict]) -> dict:
+# ─────────────────────────────────────────────────────────────────────────────
+# collate_fn — padding dinámico al máximo del batch
+# ─────────────────────────────────────────────────────────────────────────────
+
+def collate_fn(batch: List[Dict]) -> Dict:
     """
-    Agrupa muestras de longitud variable con padding por ceros.
+    Agrupa una lista de items en un batch con padding dinámico.
+    Rellena hasta la secuencia más larga del batch (no hasta TMAX global),
+    lo que ahorra memoria y cómputo en batches de secuencias cortas.
 
-    Entrada:
-        lista de dicts con keys: keypoints (T_i, 133, 3), label, video_id, T
-
-    Salida (dict):
-        keypoints  : FloatTensor  (B, T_max, 133, 3)
-        labels     : LongTensor   (B,)
-        padding_mask : BoolTensor  (B, T_max)
-            True  → posición válida (no padding)
-            False → posición de relleno
-        video_ids  : list[str]
-        lengths    : list[int]     duración real de cada muestra
+    Returns dict con:
+        keypoints   : (B, T_max_batch, 266)  float32
+        valid_mask  : (B, T_max_batch)        bool  — True = frame real
+        label       : (B,)                    int64
+        video_id    : List[str]
+        keypoints_aug (si existe): (B, T_max_batch, 266)
     """
-    lengths   = [item["T"] for item in batch]
-    T_max     = max(lengths)
-    B         = len(batch)
+    T_max = max(item["T"] for item in batch)
+    B     = len(batch)
 
-    kpts_pad  = torch.zeros(B, T_max, N_KPT, N_FEAT, dtype=torch.float32)
-    mask      = torch.zeros(B, T_max, dtype=torch.bool)   # False = padding
-    labels    = torch.stack([item["label"] for item in batch])
-    video_ids = [item["video_id"] for item in batch]
+    kpts_padded = torch.zeros(B, T_max, INPUT_DIM, dtype=torch.float32)
+    valid_mask  = torch.zeros(B, T_max, dtype=torch.bool)
+    labels      = torch.stack([item["label"] for item in batch])
+    video_ids   = [item["video_id"] for item in batch]
+
+    has_aug    = "keypoints_aug" in batch[0]
+    aug_padded = torch.zeros(B, T_max, INPUT_DIM, dtype=torch.float32) if has_aug else None
 
     for i, item in enumerate(batch):
-        t = item["T"]
-        kpts_pad[i, :t] = item["keypoints"]
-        mask[i, :t]     = True   # frames reales → True
+        T = item["T"]
+        kpts_padded[i, :T] = item["keypoints"]
+        valid_mask[i,  :T] = True
+        if has_aug:
+            aug_padded[i, :T] = item["keypoints_aug"]
 
-    return {
-        "keypoints":    kpts_pad,     # (B, T_max, 133, 3)
-        "labels":       labels,       # (B,)
-        "padding_mask": mask,         # (B, T_max)  True = válido
-        "video_ids":    video_ids,
-        "lengths":      lengths,
+    out = {
+        "keypoints":  kpts_padded,   # (B, T_max, 266)
+        "valid_mask": valid_mask,     # (B, T_max)
+        "label":      labels,         # (B,)
+        "video_id":   video_ids,
     }
+    if has_aug:
+        out["keypoints_aug"] = aug_padded
+
+    return out
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-#  inspect_signer_inference  —  diagnóstico del campo 'intento'
-# ──────────────────────────────────────────────────────────────────────────────
-def inspect_signer_inference(parquet_path: str | Path) -> dict:
+# ─────────────────────────────────────────────────────────────────────────────
+# Utilidad: extraer ID de señante desde el campo intento
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _extract_speaker(intento: str) -> str:
     """
-    Analiza el campo 'intento' y verifica si el prefijo de 2 dígitos identifica
-    consistentemente al señador.
-
-    Convención esperada: intento = "{señador:02d}{glosa:03d}"
-    Ej: "01001" → señador 01 / glosa 001
-
-    Retorna un dict con estadísticas y una recomendación sobre si usar
-    by_signer es viable.
+    Extrae el ID de señante desde el campo intento.
+    Formato: 'SSXXX' donde SS = señante (2 dígitos), XXX = glosa (3 dígitos).
+    Ejemplo: '01001' → señante '01'
+             '10249' → señante '10'
     """
-    df = pd.read_parquet(parquet_path, columns=["glosa", "intento", "video_id"])
-    df["signer"] = df["intento"].str[:2]
-
-    n_videos   = len(df)
-    n_glosas   = df["glosa"].nunique()
-    n_intentos = df["intento"].nunique()
-    n_signers  = df["signer"].nunique()
-
-    intentos_por_signer = (
-        df.groupby("signer")["intento"]
-        .nunique()
-        .describe()
-        .round(2)
-        .to_dict()
-    )
-
-    # Heurística adaptada a la convención del dataset:
-    #   intento = "{señador:02d}{glosa:03d}"  →  1 intento por señador por glosa.
-    # En este caso ratio_multi siempre es ~0, pero el prefijo sí identifica
-    # al señador. La verdadera señal de viabilidad es:
-    #   - Hay ≥3 señadores distintos, Y
-    #   - Cada señador cubre una fracción razonable de las glosas
-    #     (mean intentos_por_signer ≥ 0.5 * n_glosas)
-    mean_intentos  = intentos_por_signer.get("mean", 0)
-    coverage_ratio = mean_intentos / n_glosas if n_glosas > 0 else 0
-
-    # ratio_multi se mantiene por compatibilidad pero ya no es el criterio
-    per_glosa    = df.groupby("glosa").agg(n_signers=("signer", "nunique"))
-    glosas_multi = per_glosa[per_glosa["n_signers"] > 1]
-    ratio_multi  = len(glosas_multi) / len(per_glosa)
-
-    if n_signers <= 2:
-        recommendation = (
-            "⚠  Solo se detectan ≤2 señadores distintos. "
-            "Usa 'stratified' en su lugar."
-        )
-        viable = False
-    elif coverage_ratio >= 0.5:
-        recommendation = (
-            f"✓  {n_signers} señadores detectados, cada uno cubre en promedio "
-            f"{mean_intentos:.0f}/{n_glosas} glosas ({coverage_ratio:.0%}). "
-            f"'by_signer' es viable."
-        )
-        viable = True
-    else:
-        recommendation = (
-            f"⚠  Los señadores cubren en promedio solo el {coverage_ratio:.0%} "
-            f"de las glosas. Puede haber clases sin representación en algún split."
-        )
-        viable = False
-
-    return {
-        "n_videos":               n_videos,
-        "n_glosas":               n_glosas,
-        "n_intentos_unicos":      n_intentos,
-        "n_signers_unicos":       n_signers,
-        "glosas_multi_por_signer": len(glosas_multi),
-        "ratio_multi":            round(ratio_multi, 3),
-        "intentos_por_signer":    intentos_por_signer,
-        "by_signer_viable":       viable,
-        "recommendation":         recommendation,
-    }
+    return str(intento).zfill(5)[:2]
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-#  make_splits  —  genera índices train / val / test
-# ──────────────────────────────────────────────────────────────────────────────
-def make_splits(
-    parquet_path: str | Path,
-    strategy: Literal["by_signer", "stratified"] = "by_signer",
-    val_ratio:  float = 0.15,
-    test_ratio: float = 0.15,
-    seed: int = 42,
-    label_col: str = "glosa",
-    verbose: bool = True,
-) -> tuple[list[str], list[str], list[str]]:
+# ─────────────────────────────────────────────────────────────────────────────
+# split_dataset — punto de entrada principal desde train.py
+# ─────────────────────────────────────────────────────────────────────────────
+
+def split_dataset(
+    parquet_path:   str,
+    train_ratio:    float              = 0.70,
+    val_ratio:      float              = 0.15,
+    seed:           int                = 42,
+    augment_train:  Optional[Callable] = None,
+    score_thresh:   float              = 0.3,
+    tmax:           int                = TMAX,
+    view_gen:       Optional[Callable] = None,
+    split_by_speaker: bool             = False,
+    val_speakers:   Optional[List[str]] = None,
+    test_speakers:  Optional[List[str]] = None,
+) -> Tuple[LSMDataset, LSMDataset, LSMDataset]:
     """
-    Genera splits train / val / test sin data leakage.
+    Carga el parquet y divide en train / val / test.
 
-    Estrategias
-    -----------
-    "by_signer"
-        Separa señadores completos entre splits usando el prefijo de 2 dígitos
-        del campo 'intento' (ej. "01001" → señador "01").
-        Ningún señador del test aparece en train → evaluación realista.
-        Si se detectan ≤2 señadores, cae automáticamente a "stratified".
+    Hay dos modos:
 
-    "stratified"
-        Reparto aleatorio proporcional por clase (glosa).
-        Un mismo señador puede aparecer en train y test (más optimista).
-        Útil como baseline rápido.
+    1. split_by_speaker=True (recomendado para generalización):
+       Divide por señante completo — ningún señante aparece en más de un split.
+       Esto evalúa correctamente la capacidad del modelo de reconocer glosas
+       de personas nuevas nunca vistas en entrenamiento.
 
-    Retorna
+       Por defecto asigna:
+         - val_speakers  : el penúltimo señante  (ej. '09')
+         - test_speakers : el último señante      (ej. '10')
+         - train         : todos los demás        (ej. '01'–'08')
+
+       Se puede especificar manualmente:
+         val_speakers=['09'], test_speakers=['10']
+
+    2. split_by_speaker=False (split aleatorio por video):
+       Split estratificado por glosa — mezcla señantes entre splits.
+       Útil para comparar con baselines de la literatura, pero infla
+       las métricas si el objetivo es generalizar a personas nuevas.
+
+    Parámetros
+    ----------
+    parquet_path     : ruta al .parquet
+    train_ratio      : fracción train si split_by_speaker=False
+    val_ratio        : fracción val   si split_by_speaker=False
+    seed             : semilla para split aleatorio
+    augment_train    : LandmarkAugmenter ó None
+    score_thresh     : umbral confianza landmarks
+    tmax             : longitud máxima de secuencia
+    view_gen         : AimCLRViewGenerator ó None
+    split_by_speaker : True = split por señante (recomendado)
+    val_speakers     : lista de IDs de señante para val (ej. ['09'])
+    test_speakers    : lista de IDs de señante para test (ej. ['10'])
+
+    Returns
     -------
-    (train_ids, val_ids, test_ids)  — listas de video_id strings.
+    (train_ds, val_ds, test_ds)
     """
-    assert 0 < val_ratio + test_ratio < 1, "val_ratio + test_ratio debe ser < 1"
+    print(f"[split_dataset] Cargando {parquet_path} …")
+    df = pd.read_parquet(parquet_path).reset_index(drop=True)
 
-    rng = random.Random(seed)
-    df  = pd.read_parquet(parquet_path, columns=["video_id", label_col, "intento"])
-    df["signer"] = df["intento"].str[:2]
+    # ── Vocabulario ───────────────────────────────────────────────────────────
+    glosas_sorted = sorted(df["glosa"].unique().tolist())
+    glosa2idx     = {g: i for i, g in enumerate(glosas_sorted)}
+    num_classes   = len(glosa2idx)
+    print(f"[split_dataset] {len(df)} videos | {num_classes} glosas únicas")
 
-    # ── Estrategia by_signer ──────────────────────────────────
-    if strategy == "by_signer":
-        unique_signers = sorted(df["signer"].unique())
+    if split_by_speaker:
+        # ── Split por señante ─────────────────────────────────────────────────
+        df["_speaker"]  = df["intento"].astype(str).str.zfill(5).str[:2]
+        all_speakers    = sorted(df["_speaker"].unique().tolist())
+        n_glosas_total  = df["glosa"].nunique()
+        print(f"[split_dataset] Señantes detectados: {all_speakers}")
 
-        if len(unique_signers) <= 2:
-            print(
-                "  ⚠  Solo se detectaron ≤2 señadores distintos. "
-                "Cayendo a estrategia 'stratified'."
-            )
-            strategy = "stratified"
+        # Clasificar señantes: completos (≥90% de glosas) e incompletos
+        glosas_por_speaker = df.groupby("_speaker")["glosa"].nunique()
+        umbral      = int(n_glosas_total * 0.90)
+        completos   = sorted(glosas_por_speaker[glosas_por_speaker >= umbral].index.tolist())
+        incompletos = sorted(glosas_por_speaker[glosas_por_speaker <  umbral].index.tolist())
+        if incompletos:
+            print(f"[split_dataset] Completos  (≥{umbral} glosas): {completos}")
+            print(f"[split_dataset] Incompletos (<{umbral} glosas): {incompletos}")
+
+        # Val y test solo desde señantes completos para evaluación justa
+        if val_speakers is None:
+            val_speakers  = [completos[-2]] if len(completos) >= 2 else [completos[-1]]
+        if test_speakers is None:
+            test_speakers = [completos[-1]]
+
+        # Train = todos los demás, incluyendo incompletos
+        # (aportan variabilidad sin contaminar evaluación)
+        train_speakers = [s for s in all_speakers
+                          if s not in val_speakers and s not in test_speakers]
+
+        print(f"[split_dataset] Train señantes: {train_speakers}")
+        print(f"[split_dataset] Val  señantes : {val_speakers}")
+        print(f"[split_dataset] Test señantes : {test_speakers}")
+
+        df_train = df[df["_speaker"].isin(train_speakers)].copy()
+        df_val   = df[df["_speaker"].isin(val_speakers)].copy()
+        df_test  = df[df["_speaker"].isin(test_speakers)].copy()
+
+        # Verificar cobertura
+        train_glosas = set(df_train["glosa"].unique())
+        missing_val  = train_glosas - set(df_val["glosa"].unique())
+        missing_test = train_glosas - set(df_test["glosa"].unique())
+        if missing_val:
+            print(f"  ⚠ {len(missing_val)} glosas sin representación en val")
         else:
-            rng.shuffle(unique_signers)
-            n      = len(unique_signers)
-            n_test = max(1, round(n * test_ratio))
-            n_val  = max(1, round(n * val_ratio))
+            print(f"  ✓ Val cubre todas las glosas de train")
+        if missing_test:
+            print(f"  ⚠ {len(missing_test)} glosas sin representación en test")
+        else:
+            print(f"  ✓ Test cubre todas las glosas de train")
 
-            test_signers  = set(unique_signers[:n_test])
-            val_signers   = set(unique_signers[n_test : n_test + n_val])
-            train_signers = set(unique_signers[n_test + n_val :])
-
-            train_ids = df[df["signer"].isin(train_signers)]["video_id"].tolist()
-            val_ids   = df[df["signer"].isin(val_signers)]  ["video_id"].tolist()
-            test_ids  = df[df["signer"].isin(test_signers)] ["video_id"].tolist()
-
-            if verbose:
-                _print_split_report(df, train_ids, val_ids, test_ids,
-                                    label_col, "by_signer")
-            return train_ids, val_ids, test_ids
-
-    # ── Estrategia stratified ─────────────────────────────────
-    class_to_ids: dict[str, list[str]] = defaultdict(list)
-    for _, row in df.iterrows():
-        class_to_ids[row[label_col]].append(row["video_id"])
-
-    train_ids, val_ids, test_ids = [], [], []
-
-    for ids in class_to_ids.values():
-        rng.shuffle(ids)
-        n = len(ids)
-
-        if n < 3:
-            train_ids.extend(ids)
-            continue
-
-        n_test = max(1, round(n * test_ratio))
-        n_val  = max(1, round(n * val_ratio))
-
-        test_ids .extend(ids[:n_test])
-        val_ids  .extend(ids[n_test : n_test + n_val])
-        train_ids.extend(ids[n_test + n_val :])
-
-    if verbose:
-        _print_split_report(df, train_ids, val_ids, test_ids,
-                            label_col, "stratified")
-    return train_ids, val_ids, test_ids
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-#  _print_split_report  —  reporte con overlap, clases y señadores
-# ──────────────────────────────────────────────────────────────────────────────
-def _print_split_report(
-    df: pd.DataFrame,
-    train_ids: list[str],
-    val_ids:   list[str],
-    test_ids:  list[str],
-    label_col: str,
-    strategy:  str,
-) -> None:
-    total = len(train_ids) + len(val_ids) + len(test_ids)
-    sep   = "─" * 55
-    print(f"\n{sep}")
-    print(f"Split: {strategy}")
-    print(sep)
-    print(f"  Total  : {total}")
-    print(f"  Train  : {len(train_ids):>5}  ({len(train_ids)/total:.1%})")
-    print(f"  Val    : {len(val_ids):>5}  ({len(val_ids)/total:.1%})")
-    print(f"  Test   : {len(test_ids):>5}  ({len(test_ids)/total:.1%})")
-
-    # ── Overlaps de video_id ──────────────────────────────────
-    s_tr, s_va, s_te = set(train_ids), set(val_ids), set(test_ids)
-    overlaps = {
-        "train∩val":  len(s_tr & s_va),
-        "train∩test": len(s_tr & s_te),
-        "val∩test":   len(s_va & s_te),
-    }
-    if any(overlaps.values()):
-        print(f"\n  ⚠  OVERLAPS de video_id: {overlaps}")
     else:
-        print(f"\n  ✓  Sin overlaps de video_id entre splits")
+        # ── Split aleatorio estratificado por glosa (modo legacy) ─────────────
+        print("[split_dataset] Modo: split aleatorio por glosa (split_by_speaker=False)")
+        rng = np.random.default_rng(seed)
+        train_idx, val_idx, test_idx = [], [], []
 
-    # ── Cobertura de clases ───────────────────────────────────
-    def classes_in(ids):
-        return set(df[df["video_id"].isin(ids)][label_col])
+        for glosa, group in df.groupby("glosa"):
+            idx = group.index.tolist()
+            rng.shuffle(idx)
+            n = len(idx)
 
-    c_train, c_val, c_test = classes_in(train_ids), classes_in(val_ids), classes_in(test_ids)
-    print(f"\n  Clases en train : {len(c_train)}")
-    print(f"  Clases en val   : {len(c_val)}")
-    print(f"  Clases en test  : {len(c_test)}")
-    missing_test = c_train - c_test
-    if missing_test:
-        print(f"  ⚠  {len(missing_test)} clases de train ausentes en test "
-              f"(esperable en by_signer con pocas muestras por señador)")
+            if n == 1:
+                train_idx.extend(idx)
+            elif n == 2:
+                train_idx.append(idx[0])
+                val_idx.append(idx[1])
+            else:
+                n_tr = max(1, int(round(n * train_ratio)))
+                n_va = max(1, int(round(n * val_ratio)))
+                n_te = max(0, n - n_tr - n_va)
+                while n_tr + n_va + n_te > n:
+                    if n_te > 0:   n_te -= 1
+                    elif n_va > 1: n_va -= 1
+                    else:          n_tr -= 1
+                train_idx.extend(idx[:n_tr])
+                val_idx.extend(idx[n_tr: n_tr + n_va])
+                test_idx.extend(idx[n_tr + n_va: n_tr + n_va + n_te])
 
-    # ── Señadores por split ───────────────────────────────────
-    if "signer" in df.columns:
-        def signers_in(ids):
-            return set(df[df["video_id"].isin(ids)]["signer"])
+        df_train = df.loc[train_idx]
+        df_val   = df.loc[val_idx]
+        df_test  = df.loc[test_idx]
 
-        sg_tr = signers_in(train_ids)
-        sg_va = signers_in(val_ids)
-        sg_te = signers_in(test_ids)
-        print(f"\n  Señadores en train : {sorted(sg_tr)}")
-        print(f"  Señadores en val   : {sorted(sg_va)}")
-        print(f"  Señadores en test  : {sorted(sg_te)}")
-
-        shared = (sg_tr & sg_te) | (sg_tr & sg_va) | (sg_va & sg_te)
-        if shared:
-            print(f"  ⚠  Señadores compartidos entre splits: {shared}")
-        else:
-            print(f"  ✓  Ningún señador compartido entre splits")
-
-    print(sep)
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-#  Script standalone: diagnóstico + splits + DataLoader de prueba
-# ──────────────────────────────────────────────────────────────────────────────
-if __name__ == "__main__":
-    import argparse
-    from torch.utils.data import DataLoader
-
-    p = argparse.ArgumentParser(
-        description="Diagnostica señadores, genera splits e inspecciona el dataset LSM."
-    )
-    p.add_argument("--parquet",    "-p", required=True,
-                   help="Ruta al Parquet (ej. corpus_LSM_esp/lsm_dataset.parquet)")
-    p.add_argument("--strategy",   "-s", default="by_signer",
-                   choices=["by_signer", "stratified"])
-    p.add_argument("--val-ratio",  type=float, default=0.15)
-    p.add_argument("--test-ratio", type=float, default=0.15)
-    p.add_argument("--seed",       type=int,   default=42)
-    p.add_argument("--batch-size", type=int,   default=4)
-    p.add_argument("--diagnose",   action="store_true",
-                   help="Solo muestra el diagnóstico de señadores, sin generar splits")
-    p.add_argument("--save",       metavar="FILE",
-                   help="Guarda los splits en un JSON (ej. splits.json)")
-    args = p.parse_args()
-
-    # ── Diagnóstico ───────────────────────────────────────────
-    print("\n=== Diagnóstico de señadores ===")
-    info = inspect_signer_inference(args.parquet)
-    for k, v in info.items():
-        if k != "intentos_por_signer":
-            print(f"  {k:<40}: {v}")
-    print(f"  {'intentos_por_signer':<40}: {info['intentos_por_signer']}")
-
-    if args.diagnose:
-        raise SystemExit(0)
-
-    # ── Generar splits ────────────────────────────────────────
-    strategy = args.strategy
-    if strategy == "by_signer" and not info["by_signer_viable"]:
-        print("\n⚠  by_signer no parece viable. Considera --strategy stratified\n")
-
-    print(f"\n=== Generando splits (strategy={strategy}) ===")
-    train_ids, val_ids, test_ids = make_splits(
-        parquet_path=args.parquet,
-        strategy=strategy,
-        val_ratio=args.val_ratio,
-        test_ratio=args.test_ratio,
-        seed=args.seed,
+    print(
+        f"[split_dataset] "
+        f"train={len(df_train)} | val={len(df_val)} | test={len(df_test)}"
     )
 
-    # ── Guardar JSON ──────────────────────────────────────────
-    if args.save:
-        out = {
-            "strategy":   strategy,
-            "val_ratio":  args.val_ratio,
-            "test_ratio": args.test_ratio,
-            "seed":       args.seed,
-            "train":      train_ids,
-            "val":        val_ids,
-            "test":       test_ids,
-        }
-        Path(args.save).write_text(json.dumps(out, indent=2, ensure_ascii=False))
-        print(f"\nSplits guardados en: {args.save}")
+    # ── Instanciar datasets ───────────────────────────────────────────────────
+    train_ds = LSMDataset(
+        df=df_train,
+        glosa2idx=glosa2idx,
+        augmenter=augment_train,
+        score_thresh=score_thresh,
+        tmax=tmax,
+        return_aug=(view_gen is not None),
+        view_gen=view_gen,
+    )
+    val_ds = LSMDataset(
+        df=df_val,
+        glosa2idx=glosa2idx,
+        augmenter=None,
+        score_thresh=score_thresh,
+        tmax=tmax,
+        return_aug=False,
+    )
+    test_ds = LSMDataset(
+        df=df_test,
+        glosa2idx=glosa2idx,
+        augmenter=None,
+        score_thresh=score_thresh,
+        tmax=tmax,
+        return_aug=False,
+    )
 
-    # ── DataLoader de prueba ──────────────────────────────────
-    print("\n=== Cargando LSMDataset (train) ===")
-    ds     = LSMDataset(args.parquet, video_ids=train_ids)
-    loader = DataLoader(ds, batch_size=args.batch_size,
-                        shuffle=True, collate_fn=collate_fn)
-
-    print(f"Num classes: {ds.num_classes}")
-    print("Ejemplo batch:")
-    for batch in loader:
-        print(f"  keypoints shape : {batch['keypoints'].shape}")
-        print(f"  labels          : {batch['labels']}")
-        print(f"  padding_mask    : {batch['padding_mask'].shape}")
-        print(f"  lengths         : {batch['lengths']}")
-        break
+    return train_ds, val_ds, test_ds

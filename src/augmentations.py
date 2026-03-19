@@ -1,468 +1,337 @@
 """
 src/augmentations.py
-──────────────────────────────────────────────────────────────────────────────
-Augmentaciones de landmarks para LSM. Diseñadas para aplicarse on-the-fly
-dentro de LSMDataset sobre tensores numpy (T, 133, 2) — solo canales x, y.
+====================
+Aumentaciones para secuencias de landmarks LSM.
 
-Todas las augmentaciones:
-  - Reciben y devuelven arrays numpy float32 de shape (T, 133, 2)
-  - Son probabilísticas: cada una tiene un parámetro `p` de aplicación
-  - Preservan la semántica de la seña (no distorsionan más allá de lo realista)
+Solo se mantienen las que producen un cambio perceptible y verificado:
 
-Grupos implementados (roadmap claude.md sección 7A):
-  Espacial geométrica:
-    - RandomTranslation   : traslación aleatoria del cuerpo en x, y
-    - RandomScale         : escalado uniforme alrededor del centroide
-    - RandomRotation      : rotación pequeña alrededor del centroide
-    - GaussianNoise       : ruido gaussiano leve en coordenadas
+  LandmarkAugmenter (entrenamiento estándar) — 6 aumentaciones:
+    1. _speed_perturbation   ★ más valiosa: misma forma, distinta velocidad
+    2. _spatial_scale          escala amplitud del movimiento (distancia a cámara)
+    3. _wrist_trajectory_noise ruido suavizado sobre trayectoria de muñecas
+    4. _temporal_blur          suaviza movimientos rápidos (σ=1.5 validado)
+    5. _temporal_crop_pad      simula inicio/fin tardío de grabación
+    6. _rotation_2d            inclinación de cámara (±10°)
 
-  Temporal:
-    - TemporalJitter      : desplazamiento aleatorio de frames individuales
-    - FrameDrop           : elimina frames aleatorios e interpola
-    - SpeedPerturbation   : resamplea la secuencia (más rápido / más lento)
-    - TimeWarp            : deformación temporal suave con spline
+  AimCLRViewGenerator (pérdida contrastiva D3M) — vistas extremas:
+    Base: LandmarkAugmenter con rangos agresivos
+    Extra: _temporal_flip + _keypoint_group_dropout + _temporal_blur
 
-  Oclusión sintética:
-    - RegionDropout       : pone a cero una región corporal completa por N frames
-
-  Score-aware:
-    - ScoreBasedNoise     : más ruido en keypoints con score bajo (canal 2)
-      (requiere el tensor completo (T, 133, 3) — ver docstring)
-
-  Composición:
-    - Compose             : aplica una lista de augmentaciones en secuencia
-    - build_train_augments: preset recomendado para entrenamiento
-
-Uso:
-    from src.augmentations import build_train_augments
-
-    aug = build_train_augments()
-    xy_aug = aug(xy)   # xy: numpy (T, 133, 2)
+Eliminadas por ser inefectivas o redundantes:
+    - _vary_build       : propagar a 50+ kpts es frágil; efecto marginal
+    - _vary_hand_size   : solapado con _spatial_scale post-normalización
+    - _add_gaussian_noise uniforme : solapado con _wrist_trajectory_noise
+    - _finger_pose_noise: sigma demasiado bajo, solapado con wrist noise
+    - _keypoint_dropout frame-a-frame: lento y menos realista que group dropout
+    - _temporal_segment_shuffle: en AimCLR basta con _temporal_flip
+    - _mirror_horizontal: riesgo de mezclar glosas simétricas distintas
 """
 
 from __future__ import annotations
 
 import numpy as np
-from scipy.interpolate import interp1d
+from typing import Tuple
+from scipy.ndimage import gaussian_filter1d
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-#  Índices de regiones COCO-WholeBody 133
-# ──────────────────────────────────────────────────────────────────────────────
-REGIONS = {
-    "body":    list(range(0,   17)),
-    "foot_l":  list(range(17,  21)),
-    "foot_r":  list(range(21,  25)),
-    "face":    list(range(25,  92)),
-    "hand_l":  list(range(92,  113)),
-    "hand_r":  list(range(113, 133)),
-}
+# ─────────────────────────────────────────────────────────────────────────────
+# Índices COCO-WholeBody (133 kpts)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_WRIST_L  = 17                          # era 91
+_WRIST_R  = 38                          # era 112
+_HAND_L   = list(range(17, 38))         # era range(92, 113)  — 21 kpts
+_HAND_R   = list(range(38, 59))    
+# _WRIST_L  = 91
+# _WRIST_R  = 112
+# _HAND_L   = list(range(92, 113))   # 21 kpts mano izquierda
+# _HAND_R   = list(range(113, 133))  # 21 kpts mano derecha
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-#  Base
-# ──────────────────────────────────────────────────────────────────────────────
-class LandmarkAugmentation:
-    """Clase base. Todas las subclases implementan __call__(xy) → xy."""
-    def __init__(self, p: float = 0.5):
-        assert 0.0 <= p <= 1.0
-        self.p = p
+# ─────────────────────────────────────────────────────────────────────────────
+# PRIMITIVAS
+# ─────────────────────────────────────────────────────────────────────────────
 
-    def apply(self, xy: np.ndarray) -> np.ndarray:
-        raise NotImplementedError
-
-    def __call__(self, xy: np.ndarray) -> np.ndarray:
-        if np.random.random() < self.p:
-            return self.apply(xy.copy())
-        return xy
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-#  Espaciales
-# ──────────────────────────────────────────────────────────────────────────────
-class RandomTranslation(LandmarkAugmentation):
+def _speed_perturbation(kpts: np.ndarray, rate: float) -> np.ndarray:
     """
-    Traslada todos los keypoints por un offset aleatorio en x e y.
-    El offset se muestrea en fracción del rango visible [0,1].
-
-    max_shift: máximo desplazamiento como fracción del espacio normalizado.
+    ★ Aumentación más valiosa según diagnóstico visual.
+    ...
     """
-    def __init__(self, max_shift: float = 0.05, p: float = 0.5):
-        super().__init__(p)
-        self.max_shift = max_shift
+    T, N, C = kpts.shape          # N es dinámico (133 antes, 59 ahora)
+    new_len  = max(2, int(round(T * rate)))
+    dst_t    = np.arange(T)
 
-    def apply(self, xy: np.ndarray) -> np.ndarray:
-        dx = np.random.uniform(-self.max_shift, self.max_shift)
-        dy = np.random.uniform(-self.max_shift, self.max_shift)
-        xy[:, :, 0] += dx
-        xy[:, :, 1] += dy
-        return xy
+    if new_len >= T:
+        src_t    = np.linspace(0, T - 1, new_len)
+        expanded = np.empty((new_len, N, C), dtype=np.float32)
+        for k in range(N):
+            for c in range(C):
+                expanded[:, k, c] = np.interp(src_t, np.arange(T), kpts[:, k, c])
+        out = expanded[:T].copy()
+    else:
+        src_t = np.linspace(0, T - 1, new_len)
+        out   = np.empty((T, N, C), dtype=np.float32)
+        for k in range(N):
+            for c in range(C):
+                compressed      = np.interp(src_t, np.arange(T), kpts[:, k, c])
+                out[:, k, c]    = np.interp(dst_t, src_t, compressed)
+
+    return out.astype(np.float32)
 
 
-class RandomScale(LandmarkAugmentation):
+def _spatial_scale(kpts: np.ndarray, s: float) -> np.ndarray:
     """
-    Escala los keypoints alrededor de su centroide temporal.
-    scale_range: (min_scale, max_scale), ej. (0.85, 1.15)
+    Escala la amplitud de todo el movimiento respecto al centro de los hombros.
+    Simula señantes con diferente amplitud de movimiento o distancia a la cámara.
+
+    Funciona pre y post normalización: post-normalización cambia la amplitud
+    relativa de las manos respecto al torso, que sí es señal discriminativa.
+
+    kpts : (T, 133, 3)
+    s    : [0.80, 1.20]
     """
-    def __init__(self, scale_range: tuple[float, float] = (0.85, 1.15), p: float = 0.5):
-        super().__init__(p)
-        self.scale_range = scale_range
-
-    def apply(self, xy: np.ndarray) -> np.ndarray:
-        scale = np.random.uniform(*self.scale_range)
-        # Centroide sobre todos los frames y keypoints
-        cx = xy[:, :, 0].mean()
-        cy = xy[:, :, 1].mean()
-        xy[:, :, 0] = cx + (xy[:, :, 0] - cx) * scale
-        xy[:, :, 1] = cy + (xy[:, :, 1] - cy) * scale
-        return xy
+    out   = kpts.copy()
+    pivot = (kpts[:, 5, :2] + kpts[:, 6, :2]) / 2.0   # (T, 2) centro hombros
+    out[:, :, :2] = pivot[:, None, :] + (kpts[:, :, :2] - pivot[:, None, :]) * s
+    return out
 
 
-class RandomRotation(LandmarkAugmentation):
+def _wrist_trajectory_noise(kpts: np.ndarray, sigma: float) -> np.ndarray:
     """
-    Rotación 2D alrededor del centroide.
-    max_angle_deg: máximo ángulo de rotación en grados (en ambas direcciones).
-    Recomendado: ≤ 15° para no distorsionar la semántica de la seña.
+    Ruido suavizado temporalmente sobre la trayectoria de ambas muñecas.
+    Simula variación natural inter-señante en la trayectoria del movimiento.
+
+    El ruido se filtra temporalmente (σ_t=3 frames) para que parezca una
+    variación continua de trayectoria, no ruido frame a frame.
+
+    kpts  : (T, 133, 3)
+    sigma : [0.02, 0.10]
     """
-    def __init__(self, max_angle_deg: float = 10.0, p: float = 0.5):
-        super().__init__(p)
-        self.max_angle_rad = np.deg2rad(max_angle_deg)
-
-    def apply(self, xy: np.ndarray) -> np.ndarray:
-        angle = np.random.uniform(-self.max_angle_rad, self.max_angle_rad)
-        cos_a, sin_a = np.cos(angle), np.sin(angle)
-
-        cx = xy[:, :, 0].mean()
-        cy = xy[:, :, 1].mean()
-
-        x_c = xy[:, :, 0] - cx
-        y_c = xy[:, :, 1] - cy
-
-        xy[:, :, 0] = cx + cos_a * x_c - sin_a * y_c
-        xy[:, :, 1] = cy + sin_a * x_c + cos_a * y_c
-        return xy
+    out = kpts.copy()
+    T   = kpts.shape[0]
+    for wrist in [_WRIST_L, _WRIST_R]:
+        raw    = np.random.normal(0.0, sigma, (T, 2)).astype(np.float32)
+        smooth = gaussian_filter1d(raw, sigma=3.0, axis=0).astype(np.float32)
+        out[:, wrist, :2] += smooth
+    return out
 
 
-class GaussianNoise(LandmarkAugmentation):
+def _temporal_blur(kpts: np.ndarray, sigma: float) -> np.ndarray:
     """
-    Añade ruido gaussiano independiente a cada coordenada.
-    std: desviación estándar del ruido como fracción del espacio [0,1].
+    Suavizado gaussiano 1D sobre la dimensión temporal.
+    Simula movimientos más fluidos / menos temblorosos.
+    σ=1.5 validado como sweet spot (Δ_rel≈1.4%, razonable).
+
+    kpts  : (T, 133, 3)
+    sigma : [0.5, 2.5]
     """
-    def __init__(self, std: float = 0.01, p: float = 0.5):
-        super().__init__(p)
-        self.std = std
-
-    def apply(self, xy: np.ndarray) -> np.ndarray:
-        noise = np.random.normal(0, self.std, size=xy.shape).astype(np.float32)
-        return xy + noise
+    out = kpts.copy()
+    out[:, :, :2] = gaussian_filter1d(
+        kpts[:, :, :2].astype(np.float64), sigma=sigma, axis=0
+    ).astype(np.float32)
+    return out
 
 
-# ──────────────────────────────────────────────────────────────────────────────
-#  Temporales
-# ──────────────────────────────────────────────────────────────────────────────
-class TemporalJitter(LandmarkAugmentation):
+def _temporal_crop_pad(kpts: np.ndarray, crop_ratio: float) -> np.ndarray:
     """
-    Desplaza ligeramente el orden de frames individuales.
-    Simula pequeñas irregularidades en la captura de video.
-    max_shift: máximo número de frames a desplazar.
+    Recorta un porcentaje del inicio o fin y rellena repitiendo el frame extremo.
+    Simula que la grabación empezó tarde o terminó antes de que la seña terminara,
+    que es el caso real en tiempo real con buffer deslizante.
+
+    kpts       : (T, 133, 3)
+    crop_ratio : [0.05, 0.20]
     """
-    def __init__(self, max_shift: int = 2, p: float = 0.5):
-        super().__init__(p)
-        self.max_shift = max_shift
-
-    def apply(self, xy: np.ndarray) -> np.ndarray:
-        T = xy.shape[0]
-        if T <= 2 * self.max_shift + 1:
-            return xy
-        # Generar índices con jitter
-        indices = np.arange(T)
-        jitter  = np.random.randint(-self.max_shift, self.max_shift + 1, size=T)
-        indices = np.clip(indices + jitter, 0, T - 1)
-        return xy[indices]
+    T   = kpts.shape[0]
+    n   = max(1, int(T * crop_ratio))
+    out = kpts.copy()
+    if np.random.random() < 0.5:
+        out[:n] = kpts[n]           # rellenar inicio con primer frame válido
+    else:
+        out[T - n:] = kpts[T-n-1]  # rellenar fin con último frame válido
+    return out
 
 
-class FrameDrop(LandmarkAugmentation):
+def _rotation_2d(kpts: np.ndarray, angle_deg: float) -> np.ndarray:
     """
-    Elimina aleatoriamente una fracción de frames e interpola los huecos.
-    drop_ratio: fracción de frames a eliminar (ej. 0.1 = 10%).
-    Preserva al menos min_frames frames.
+    Rotación 2D de toda la figura respecto al centro de los hombros.
+    Simula inclinación de la cámara o del señante.
+    Semánticamente válida hasta ±15°.
+
+    kpts      : (T, 133, 3)
+    angle_deg : [-10, 10]
     """
-    def __init__(self, drop_ratio: float = 0.1, min_frames: int = 8, p: float = 0.5):
-        super().__init__(p)
-        self.drop_ratio = drop_ratio
-        self.min_frames = min_frames
+    theta = np.deg2rad(angle_deg)
+    c, s  = np.cos(theta), np.sin(theta)
+    R     = np.array([[c, -s], [s, c]], dtype=np.float32)
 
-    def apply(self, xy: np.ndarray) -> np.ndarray:
-        T = xy.shape[0]
-        n_drop = int(T * self.drop_ratio)
-        if T - n_drop < self.min_frames:
-            return xy
-
-        # Seleccionar frames a conservar
-        keep_mask = np.ones(T, dtype=bool)
-        drop_idx  = np.random.choice(T, size=n_drop, replace=False)
-        keep_mask[drop_idx] = False
-
-        kept_frames = xy[keep_mask]          # (T - n_drop, 133, 2)
-        kept_times  = np.where(keep_mask)[0] # índices originales conservados
-
-        # Interpolar de vuelta a T frames
-        original_times = np.arange(T)
-        K = xy.shape[1]
-
-        result = np.zeros_like(xy)
-        for k in range(K):
-            for c in range(2):
-                f = interp1d(kept_times, kept_frames[:, k, c],
-                             kind="linear", fill_value="extrapolate")
-                result[:, k, c] = f(original_times)
-
-        return result.astype(np.float32)
+    out     = kpts.copy()
+    pivot   = (kpts[:, 5, :2] + kpts[:, 6, :2]) / 2.0          # (T, 2)
+    centered = kpts[:, :, :2] - pivot[:, None, :]               # (T, 133, 2)
+    out[:, :, :2] = np.einsum('tki,ij->tkj', centered, R.T) + pivot[:, None, :]
+    return out
 
 
-class SpeedPerturbation(LandmarkAugmentation):
+def _temporal_flip(kpts: np.ndarray) -> np.ndarray:
     """
-    Resamplea la secuencia temporal para simular ejecución más rápida o lenta.
-    La salida tiene exactamente T frames (se interpola o subsamplea).
-    speed_range: (min_factor, max_factor), ej. (0.8, 1.2)
-      < 1.0 → más lento (se expande y recorta)
-      > 1.0 → más rápido (se comprime y rellena)
+    Invierte la secuencia en tiempo.
+    Solo para AimCLR — rompe la semántica temporal de la seña.
     """
-    def __init__(self, speed_range: tuple[float, float] = (0.8, 1.2), p: float = 0.5):
-        super().__init__(p)
-        self.speed_range = speed_range
-
-    def apply(self, xy: np.ndarray) -> np.ndarray:
-        T  = xy.shape[0]
-        factor = np.random.uniform(*self.speed_range)
-
-        # Número de frames de la señal "acelerada/ralentizada"
-        T_new = max(2, int(round(T * factor)))
-
-        original_times = np.linspace(0, T - 1, T)
-        new_times      = np.linspace(0, T - 1, T_new)
-
-        K = xy.shape[1]
-        resampled = np.zeros((T_new, K, 2), dtype=np.float32)
-
-        for k in range(K):
-            for c in range(2):
-                f = interp1d(original_times, xy[:, k, c],
-                             kind="linear", fill_value="extrapolate")
-                resampled[:, k, c] = f(new_times)
-
-        # Volver a T frames recortando o replicando el último frame
-        if T_new >= T:
-            return resampled[:T]
-        else:
-            pad = np.tile(resampled[-1:], (T - T_new, 1, 1))
-            return np.concatenate([resampled, pad], axis=0)
+    return kpts[::-1].copy()
 
 
-class TimeWarp(LandmarkAugmentation):
+def _keypoint_group_dropout(kpts: np.ndarray, p_group: float = 0.5) -> np.ndarray:
     """
-    Deformación temporal suave usando un mapa de tiempo no lineal.
-    Simula que partes de la seña se ejecutan más rápido o lento.
-    n_anchors: número de puntos de control del warp.
-    max_warp  : máxima desviación de cada punto de control (en fracción de T).
+    Elimina una mano completa durante un segmento de tiempo aleatorio.
+    Simula oclusión realista: una mano sale del cuadro durante N frames
+    consecutivos (no dropout frame a frame, que es menos realista).
+
+    Solo para AimCLR.
+
+    kpts    : (T, 133, 3)
+    p_group : prob. de aplicar a cada mano
     """
-    def __init__(self, n_anchors: int = 4, max_warp: float = 0.1, p: float = 0.5):
-        super().__init__(p)
-        self.n_anchors = n_anchors
-        self.max_warp  = max_warp
+    out = kpts.copy()
+    T   = kpts.shape[0]
+    for hand_idx in [_HAND_L + [_WRIST_L], _HAND_R + [_WRIST_R]]:
+        if np.random.random() < p_group:
+            duration = np.random.randint(max(1, T // 6), max(2, T // 2))
+            start    = np.random.randint(0, max(1, T - duration))
+            out[start:start + duration, hand_idx, :] = 0.0
+    return out
 
-    def apply(self, xy: np.ndarray) -> np.ndarray:
-        T = xy.shape[0]
-        if T < 4:
-            return xy
 
-        # Puntos de control distribuidos uniformemente
-        anchor_x = np.linspace(0, T - 1, self.n_anchors + 2)
-        # Perturbación de los puntos interiores (los extremos se quedan fijos)
-        perturbation = np.random.uniform(
-            -self.max_warp * T,
-             self.max_warp * T,
-            size=self.n_anchors,
+# ─────────────────────────────────────────────────────────────────────────────
+# LandmarkAugmenter — aumentación estándar para entrenamiento
+# ─────────────────────────────────────────────────────────────────────────────
+
+class LandmarkAugmenter:
+    """
+    6 aumentaciones efectivas para entrenamiento estándar.
+    Todas preservan la semántica de la glosa.
+
+    Se aplica ANTES de preprocess() sobre (T, 133, 3) con score.
+
+    En promedio se activan ~4 de las 6 por muestra (suficiente diversidad).
+    Con batch_size=32 y ~1700 muestras de train, cada época ve
+    efectivamente ~6800 variantes distintas (~4x el dataset original).
+    """
+
+    def __init__(
+        self,
+        p_speed:       float = 0.8,
+        p_scale:       float = 0.6,
+        p_wrist_noise: float = 0.7,
+        p_blur:        float = 0.5,
+        p_crop:        float = 0.5,
+        p_rotation:    float = 0.4,
+        # Rangos
+        speed_range:        Tuple[float, float] = (0.6, 1.4),
+        scale_range:        Tuple[float, float] = (0.80, 1.20),
+        wrist_noise_range:  Tuple[float, float] = (0.02, 0.10),
+        blur_sigma_range:   Tuple[float, float] = (0.5, 2.5),
+        crop_ratio_range:   Tuple[float, float] = (0.05, 0.20),
+        rotation_range_deg: Tuple[float, float] = (-10.0, 10.0),
+    ):
+        self.p_speed       = p_speed
+        self.p_scale       = p_scale
+        self.p_wrist_noise = p_wrist_noise
+        self.p_blur        = p_blur
+        self.p_crop        = p_crop
+        self.p_rotation    = p_rotation
+
+        self.speed_range        = speed_range
+        self.scale_range        = scale_range
+        self.wrist_noise_range  = wrist_noise_range
+        self.blur_sigma_range   = blur_sigma_range
+        self.crop_ratio_range   = crop_ratio_range
+        self.rotation_range_deg = rotation_range_deg
+
+    def __call__(self, kpts: np.ndarray) -> np.ndarray:
+        """
+        kpts : (T, 133, 3) float32 — crudos con score, PRE preprocess()
+        Returns (T, 133, 3) float32 aumentado
+        """
+        kpts = kpts.copy()
+
+        if np.random.random() < self.p_scale:
+            kpts = _spatial_scale(kpts, np.random.uniform(*self.scale_range))
+
+        if np.random.random() < self.p_rotation:
+            kpts = _rotation_2d(kpts, np.random.uniform(*self.rotation_range_deg))
+
+        if np.random.random() < self.p_speed:
+            kpts = _speed_perturbation(kpts, np.random.uniform(*self.speed_range))
+
+        if np.random.random() < self.p_blur:
+            kpts = _temporal_blur(kpts, np.random.uniform(*self.blur_sigma_range))
+
+        if np.random.random() < self.p_crop:
+            kpts = _temporal_crop_pad(kpts, np.random.uniform(*self.crop_ratio_range))
+
+        if np.random.random() < self.p_wrist_noise:
+            kpts = _wrist_trajectory_noise(kpts, np.random.uniform(*self.wrist_noise_range))
+
+        return kpts.astype(np.float32)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AimCLRViewGenerator — dos vistas extremas para pérdida D3M
+# ─────────────────────────────────────────────────────────────────────────────
+
+class AimCLRViewGenerator:
+    """
+    Genera dos vistas independientes y agresivamente aumentadas para
+    la pérdida contrastiva D3M (AimCLR).
+
+    Cada vista pasa primero por LandmarkAugmenter con rangos extremos,
+    luego añade: flip temporal + group dropout + blur fuerte.
+
+    Las dos vistas se generan independientemente para que la red aprenda
+    representaciones invariantes a estas perturbaciones.
+    """
+
+    def __init__(
+        self,
+        p_flip:          float = 0.5,
+        p_group_dropout: float = 0.5,
+        p_blur:          float = 0.6,
+        blur_sigma:      float = 2.5,
+    ):
+        self.p_flip          = p_flip
+        self.p_group_dropout = p_group_dropout
+        self.p_blur          = p_blur
+        self.blur_sigma      = blur_sigma
+
+        # LandmarkAugmenter con rangos más agresivos como base
+        self._base = LandmarkAugmenter(
+            p_speed=0.9,       p_scale=0.7,
+            p_wrist_noise=0.8, p_blur=0.6,
+            p_crop=0.6,        p_rotation=0.5,
+            speed_range=(0.5, 1.5),
+            scale_range=(0.75, 1.25),
+            wrist_noise_range=(0.04, 0.14),
+            blur_sigma_range=(1.0, 3.5),
+            crop_ratio_range=(0.10, 0.25),
+            rotation_range_deg=(-15.0, 15.0),
         )
-        anchor_y = anchor_x.copy()
-        anchor_y[1:-1] += perturbation
-        anchor_y = np.clip(anchor_y, 0, T - 1)
-        # Garantizar que sea monótonamente creciente
-        anchor_y = np.maximum.accumulate(anchor_y)
 
-        # Mapa de tiempo: para cada frame original → frame warpeado
-        warp_fn     = interp1d(anchor_x, anchor_y, kind="cubic",
-                               fill_value="extrapolate")
-        new_times   = np.clip(warp_fn(np.arange(T)), 0, T - 1)
+    def _make_view(self, kpts: np.ndarray) -> np.ndarray:
+        kpts = self._base(kpts)
 
-        K = xy.shape[1]
-        result = np.zeros_like(xy)
-        original_times = np.arange(T, dtype=float)
+        if np.random.random() < self.p_flip:
+            kpts = _temporal_flip(kpts)
 
-        for k in range(K):
-            for c in range(2):
-                f = interp1d(original_times, xy[:, k, c],
-                             kind="linear", fill_value="extrapolate")
-                result[:, k, c] = f(new_times)
+        if np.random.random() < self.p_group_dropout:
+            kpts = _keypoint_group_dropout(kpts, p_group=0.6)
 
-        return result.astype(np.float32)
+        if np.random.random() < self.p_blur:
+            kpts = _temporal_blur(kpts, self.blur_sigma)
 
+        return kpts.astype(np.float32)
 
-# ──────────────────────────────────────────────────────────────────────────────
-#  Oclusión sintética
-# ──────────────────────────────────────────────────────────────────────────────
-class RegionDropout(LandmarkAugmentation):
-    """
-    Pone a cero una región corporal completa durante una ventana aleatoria
-    de frames consecutivos. Simula oclusión parcial.
-
-    regions     : lista de nombres de región a considerar (ver REGIONS)
-    max_drop_ratio: máxima fracción de frames a ocluir (ej. 0.3 = 30%)
-    """
-    def __init__(
-        self,
-        regions: list[str] | None = None,
-        max_drop_ratio: float = 0.3,
-        p: float = 0.3,
-    ):
-        super().__init__(p)
-        self.regions        = regions or ["hand_l", "hand_r", "face"]
-        self.max_drop_ratio = max_drop_ratio
-
-    def apply(self, xy: np.ndarray) -> np.ndarray:
-        T = xy.shape[0]
-
-        # Elegir región y ventana aleatoria
-        region_name = np.random.choice(self.regions)
-        kpt_indices = REGIONS[region_name]
-
-        n_drop  = max(1, int(T * np.random.uniform(0.05, self.max_drop_ratio)))
-        t_start = np.random.randint(0, max(1, T - n_drop))
-        t_end   = min(T, t_start + n_drop)
-
-        xy[t_start:t_end, kpt_indices, :] = 0.0
-        return xy
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-#  Score-aware
-# ──────────────────────────────────────────────────────────────────────────────
-class ScoreBasedNoise(LandmarkAugmentation):
-    """
-    Añade más ruido a los keypoints con score de confianza bajo.
-    Degrada realísticamente los puntos menos confiables.
-
-    IMPORTANTE: esta augmentación requiere el tensor completo (T, 133, 3)
-    con el canal de score en la posición 2. Devuelve solo (T, 133, 2).
-
-    base_std   : ruido base para keypoints con score=1.0
-    max_std    : ruido máximo para keypoints con score=0.0
-    score_col  : índice del canal score en el tensor de entrada
-    """
-    def __init__(
-        self,
-        base_std:  float = 0.005,
-        max_std:   float = 0.05,
-        score_col: int   = 2,
-        p: float = 0.5,
-    ):
-        super().__init__(p)
-        self.base_std  = base_std
-        self.max_std   = max_std
-        self.score_col = score_col
-
-    def __call__(self, xyz: np.ndarray) -> np.ndarray:
+    def __call__(self, kpts: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """
-        Entrada: xyz de shape (T, 133, 3)  — x, y, score
-        Salida : xy  de shape (T, 133, 2)  — x, y aumentados
+        kpts : (T, 133, 3)
+        Returns: (view1, view2) generadas independientemente
         """
-        if np.random.random() >= self.p:
-            return xyz[:, :, :2]
-
-        xy    = xyz[:, :, :2].copy()
-        score = xyz[:, :, self.score_col]         # (T, 133)
-
-        # Normalizar score a [0, 1] si está fuera de rango
-        s_min, s_max = score.min(), score.max()
-        if s_max > s_min:
-            score_norm = (score - s_min) / (s_max - s_min)
-        else:
-            score_norm = np.ones_like(score)
-
-        # std inversamente proporcional al score: score bajo → más ruido
-        std_map = self.base_std + (1.0 - score_norm) * (self.max_std - self.base_std)
-        noise   = np.random.normal(0, 1, size=xy.shape).astype(np.float32)
-        noise  *= std_map[:, :, np.newaxis]
-
-        return xy + noise
-
-    def apply(self, xy):
-        # No se usa directamente — __call__ maneja la lógica completa
-        return xy
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-#  Composición
-# ──────────────────────────────────────────────────────────────────────────────
-class Compose:
-    """
-    Aplica una lista de augmentaciones en secuencia.
-    Cada augmentación decide independientemente si se aplica según su p.
-    """
-    def __init__(self, transforms: list):
-        self.transforms = transforms
-
-    def __call__(self, xy: np.ndarray) -> np.ndarray:
-        for t in self.transforms:
-            xy = t(xy)
-        return xy
-
-
-# ──────────────────────────────────────────────────────────────────────────────
-#  Preset recomendado
-# ──────────────────────────────────────────────────────────────────────────────
-def build_train_augments(
-    use_spatial:  bool = True,
-    use_temporal: bool = True,
-    use_occlusion: bool = True,
-) -> Compose:
-    """
-    Preset de augmentaciones para entrenamiento.
-    Las probabilidades están calibradas para no distorsionar demasiado
-    con dataset pequeño (~6 muestras/clase).
-
-    Nota: ScoreBasedNoise no se incluye en Compose porque requiere el tensor
-    completo (T,133,3). Aplícala manualmente antes de extraer x,y si la necesitas.
-
-    Uso:
-        aug = build_train_augments()
-        xy_aug = aug(xy)   # xy: numpy (T, 133, 2)
-    """
-    transforms = []
-
-    if use_spatial:
-        transforms += [
-            RandomTranslation(max_shift=0.04,  p=0.5),
-            RandomScale(scale_range=(0.88, 1.12), p=0.5),
-            RandomRotation(max_angle_deg=8.0,  p=0.4),
-            GaussianNoise(std=0.008,            p=0.5),
-        ]
-
-    if use_temporal:
-        transforms += [
-            TemporalJitter(max_shift=2,          p=0.4),
-            FrameDrop(drop_ratio=0.10,           p=0.4),
-            SpeedPerturbation(speed_range=(0.85, 1.15), p=0.5),
-            TimeWarp(n_anchors=4, max_warp=0.08, p=0.4),
-        ]
-
-    if use_occlusion:
-        transforms += [
-            RegionDropout(
-                regions=["hand_l", "hand_r", "face"],
-                max_drop_ratio=0.25,
-                p=0.3,
-            ),
-        ]
-
-    return Compose(transforms)
+        return self._make_view(kpts), self._make_view(kpts)
