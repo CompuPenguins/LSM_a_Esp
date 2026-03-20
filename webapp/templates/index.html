@@ -7,7 +7,6 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,600;1,9..144,400&family=DM+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
   <style>
-    /* ── Design tokens (del esquema doc 5) ─────────────────────────────── */
     :root {
       --bg:        #0f1117;
       --surface:   #181c27;
@@ -35,7 +34,6 @@
       flex-direction: column;
     }
 
-    /* ── SCROLLBAR ── */
     ::-webkit-scrollbar { width: 4px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
@@ -44,16 +42,12 @@
     header {
       background: var(--surface);
       padding: 14px 20px 12px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
+      display: flex; align-items: center; justify-content: space-between;
       border-bottom: 1px solid var(--border);
       position: sticky; top: 0; z-index: 50;
       flex-shrink: 0;
     }
-    .logo {
-      display: flex; align-items: baseline; gap: 8px;
-    }
+    .logo { display: flex; align-items: baseline; gap: 8px; }
     .logo-hand { font-size: 1.4rem; line-height: 1; }
     .logo-text {
       font-family: var(--font-serif);
@@ -62,8 +56,7 @@
     }
     .logo-sub {
       font-size: 0.65rem; color: var(--muted);
-      font-weight: 300; letter-spacing: 0.08em;
-      text-transform: uppercase;
+      font-weight: 300; letter-spacing: 0.08em; text-transform: uppercase;
     }
     .header-btn {
       width: 34px; height: 34px; border-radius: 10px;
@@ -81,31 +74,12 @@
       display: flex; flex-direction: column; gap: 12px;
     }
 
-    /* ── GLOSA LABEL (bilingual) ── */
-    /* Every visible text label also shows its glosa above */
-    .gl {
-      display: flex; flex-direction: column; gap: 2px;
-    }
-    .gl-glosa {
-      font-size: 0.62rem; font-weight: 700; letter-spacing: 0.9px;
-      text-transform: uppercase; color: var(--accent2);
-      font-family: var(--font-sans);
-    }
-    .gl-text {
-      font-size: inherit; color: inherit; line-height: inherit;
-    }
-
     /* ── ROLE SELECTOR ── */
-    .role-screen {
-      display: flex; flex-direction: column; gap: 14px; padding-top: 6px;
-    }
-    .role-header {
-      text-align: center; padding: 8px 0 2px;
-    }
+    .role-screen { display: flex; flex-direction: column; gap: 14px; padding-top: 6px; }
+    .role-header { text-align: center; padding: 8px 0 2px; }
     .role-header h2 {
       font-family: var(--font-serif);
-      font-size: 1.15rem; font-weight: 600;
-      color: var(--text); margin-bottom: 4px;
+      font-size: 1.15rem; font-weight: 600; color: var(--text); margin-bottom: 4px;
     }
     .role-header .glosa-sub {
       font-size: 0.7rem; font-weight: 700; letter-spacing: 1px;
@@ -114,11 +88,9 @@
     .role-header p { font-size: 0.8rem; color: var(--muted); line-height: 1.5; }
 
     .role-card {
-      background: var(--surface);
-      border-radius: var(--radius);
+      background: var(--surface); border-radius: var(--radius);
       padding: 18px 16px; cursor: pointer;
-      border: 2px solid var(--border);
-      transition: all 0.2s;
+      border: 2px solid var(--border); transition: all 0.2s;
       display: flex; align-items: center; gap: 14px;
     }
     .role-card:hover { border-color: var(--accent); }
@@ -156,31 +128,26 @@
       margin-left: auto;
       font-size: 0.68rem; font-weight: 700; letter-spacing: 0.7px;
       text-transform: uppercase; color: var(--accent);
-      background: rgba(232,160,69,.12);
-      padding: 3px 9px; border-radius: 20px;
+      background: rgba(232,160,69,.12); padding: 3px 9px; border-radius: 20px;
     }
     .flow-badge.teal { color: var(--accent2); background: rgba(62,207,176,.1); }
 
     /* ── INPUT TABS ── */
     .input-tabs {
       display: flex; background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: 14px; padding: 4px; gap: 4px;
+      border: 1px solid var(--border); border-radius: 14px; padding: 4px; gap: 4px;
     }
     .tab-btn {
-      flex: 1; padding: 10px 8px; border: none;
-      border-radius: 10px; font-family: var(--font-sans);
-      cursor: pointer; transition: all 0.2s;
-      display: flex; flex-direction: column;
-      align-items: center; gap: 1px; background: transparent;
+      flex: 1; padding: 10px 8px; border: none; border-radius: 10px;
+      font-family: var(--font-sans); cursor: pointer; transition: all 0.2s;
+      display: flex; flex-direction: column; align-items: center; gap: 1px;
+      background: transparent;
     }
     .tab-btn .tb-glosa {
       font-size: 0.56rem; font-weight: 700; letter-spacing: 0.8px;
       text-transform: uppercase; color: var(--muted);
     }
-    .tab-btn .tb-label {
-      font-size: 0.8rem; font-weight: 600; color: var(--muted);
-    }
+    .tab-btn .tb-label { font-size: 0.8rem; font-weight: 600; color: var(--muted); }
     .tab-btn.active { background: var(--accent); }
     .tab-btn.active .tb-glosa,
     .tab-btn.active .tb-label { color: #0f1117; }
@@ -209,9 +176,8 @@
     .input-area {
       width: 100%; min-height: 100px; border: none; outline: none;
       padding: 10px 16px 12px; font-family: var(--font-sans);
-      font-size: 0.98rem; color: var(--text);
-      resize: none; background: transparent; caret-color: var(--accent);
-      line-height: 1.6;
+      font-size: 0.98rem; color: var(--text); resize: none;
+      background: transparent; caret-color: var(--accent); line-height: 1.6;
     }
     .input-area::placeholder { color: var(--muted); opacity: 0.5; }
 
@@ -244,8 +210,7 @@
 
     /* ── CAMERA ── */
     .camera-view {
-      width: 100%; aspect-ratio: 4/3;
-      background: #0a0c11;
+      width: 100%; aspect-ratio: 4/3; background: #0a0c11;
       display: flex; flex-direction: column;
       align-items: center; justify-content: center;
       gap: 10px; position: relative; overflow: hidden;
@@ -283,8 +248,7 @@
       text-transform: uppercase; opacity: 0.7;
     }
     .cam-rec {
-      padding: 11px 14px;
-      background: var(--bg); border: 1px solid var(--border);
+      padding: 11px 14px; background: var(--bg); border: 1px solid var(--border);
       border-radius: 12px; font-family: var(--font-sans);
       font-size: 0.82rem; font-weight: 600; color: var(--muted);
       cursor: pointer; white-space: nowrap;
@@ -293,32 +257,26 @@
     .cam-rec:disabled { opacity: .35; cursor: not-allowed; }
     .cam-rec.recording { border-color: var(--danger); color: var(--danger); }
     .rec-dot {
-      width: 7px; height: 7px; border-radius: 50%;
-      background: var(--danger);
+      width: 7px; height: 7px; border-radius: 50%; background: var(--danger);
       animation: blink-dot 1.1s ease infinite;
     }
     @keyframes blink-dot { 0%,100%{opacity:1} 50%{opacity:.2} }
 
     /* ── MIC SECTION ── */
     .mic-section {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      padding: 22px 18px;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 22px 18px;
       display: flex; flex-direction: column; align-items: center; gap: 12px;
     }
     .mic-big {
       width: 88px; height: 88px; border-radius: 50%;
-      background: rgba(232,160,69,.1);
-      border: 2px solid var(--border);
+      background: rgba(232,160,69,.1); border: 2px solid var(--border);
       display: flex; align-items: center; justify-content: center;
-      font-size: 2.2rem; cursor: pointer;
-      transition: all 0.2s;
+      font-size: 2.2rem; cursor: pointer; transition: all 0.2s;
     }
     .mic-big:hover { background: rgba(232,160,69,.2); border-color: var(--accent); }
     .mic-big.recording {
-      background: rgba(224,92,92,.15);
-      border-color: var(--danger);
+      background: rgba(224,92,92,.15); border-color: var(--danger);
       animation: mic-pulse 1.2s ease infinite;
     }
     @keyframes mic-pulse {
@@ -336,9 +294,7 @@
       font-size: 0.72rem; color: var(--muted);
       display: flex; align-items: center; gap: 8px; width: 100%;
     }
-    .mic-or::before, .mic-or::after {
-      content:''; flex:1; height:1px; background: var(--border);
-    }
+    .mic-or::before, .mic-or::after { content:''; flex:1; height:1px; background: var(--border); }
     .upload-audio-btn {
       width: 100%; padding: 11px;
       border: 1px dashed var(--border); background: transparent;
@@ -354,30 +310,20 @@
     .upload-audio-btn:hover { border-color: var(--accent2); color: var(--text); }
     #audio-file-input { display: none; }
 
-    /* ── STT PREVIEW ── */
     .output-area { padding: 12px 16px; }
-    .text-result {
-      font-size: 0.98rem; line-height: 1.65; color: var(--text);
-    }
+    .text-result { font-size: 0.98rem; line-height: 1.65; color: var(--text); }
 
     /* ── RESULT BLOCK ── */
     .result-block {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius); overflow: hidden;
-      display: none;
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--radius); overflow: hidden; display: none;
     }
     .result-block.visible { display: block; }
 
-    .result-section {
-      padding: 14px 16px;
-      border-bottom: 1px solid var(--border);
-    }
+    .result-section { padding: 14px 16px; border-bottom: 1px solid var(--border); }
     .result-section:last-of-type { border-bottom: none; }
 
-    .result-section-label {
-      display: flex; flex-direction: column; gap: 1px; margin-bottom: 10px;
-    }
+    .result-section-label { display: flex; flex-direction: column; gap: 1px; margin-bottom: 10px; }
     .rsl-glosa {
       font-size: 0.6rem; font-weight: 700; letter-spacing: 0.9px;
       text-transform: uppercase; color: var(--accent2);
@@ -387,12 +333,10 @@
       text-transform: uppercase; color: var(--muted);
     }
 
-    /* Avatar */
+    /* ── AVATAR / CANVAS BOX ── */
     .avatar-box {
-      width: 100%; aspect-ratio: 4/3;
-      background: #0a0c11;
-      border-radius: 12px;
-      border: 1px solid var(--border);
+      width: 100%; aspect-ratio: 4/3; background: #0a0c11;
+      border-radius: 12px; border: 1px solid var(--border);
       display: flex; flex-direction: column;
       align-items: center; justify-content: center;
       gap: 8px; position: relative; overflow: hidden;
@@ -412,13 +356,14 @@
       font-size: 0.6rem; font-weight: 700; letter-spacing: 0.9px;
       color: var(--accent2); text-transform: uppercase;
     }
+
+    /* ── AVATAR CONTROLS ── */
     .avatar-controls {
       display: flex; gap: 8px; padding: 10px 14px;
-      border-top: 1px solid var(--border);
+      border-top: 1px solid var(--border); align-items: center;
     }
     .play-btn {
-      flex: 1; padding: 10px;
-      background: var(--accent2); color: #0f1117; border: none;
+      flex: 1; padding: 10px; background: var(--accent2); color: #0f1117; border: none;
       border-radius: 11px; font-family: var(--font-sans);
       font-size: 0.83rem; font-weight: 600; cursor: pointer;
       display: flex; flex-direction: column; align-items: center; gap: 1px;
@@ -429,10 +374,30 @@
     }
     .play-btn.amber { background: var(--accent); }
     .speed-btn {
-      padding: 10px 14px;
-      background: var(--bg); border: 1px solid var(--border);
+      padding: 10px 14px; background: var(--bg); border: 1px solid var(--border);
       border-radius: 11px; font-family: var(--font-sans);
       font-size: 0.8rem; font-weight: 600; color: var(--muted); cursor: pointer;
+      transition: border-color .2s;
+    }
+    .speed-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+
+    /* ── FULLSCREEN BUTTON ── */
+    .fs-btn {
+      padding: 10px 12px; background: var(--bg); border: 1px solid var(--border);
+      border-radius: 11px; font-size: 1rem; cursor: pointer;
+      color: var(--muted); transition: border-color .2s, color .2s;
+      line-height: 1;
+    }
+    .fs-btn:hover { border-color: var(--accent2); color: var(--accent2); }
+
+    /* Canvas fullscreen styling */
+    canvas:-webkit-full-screen {
+      width: 100vw !important; height: 100vh !important;
+      background: #0a0c11;
+    }
+    canvas:fullscreen {
+      width: 100vw !important; height: 100vh !important;
+      background: #0a0c11;
     }
 
     /* Glosa chips */
@@ -454,10 +419,8 @@
       padding: 10px 14px; border-top: 1px solid var(--border);
     }
     .out-btn {
-      flex: 1; padding: 9px;
-      border: 1px solid var(--border); background: var(--bg);
-      border-radius: 10px; font-family: var(--font-sans);
-      cursor: pointer; color: var(--muted);
+      flex: 1; padding: 9px; border: 1px solid var(--border); background: var(--bg);
+      border-radius: 10px; font-family: var(--font-sans); cursor: pointer; color: var(--muted);
       display: flex; flex-direction: column; align-items: center; gap: 1px;
       transition: border-color .2s;
     }
@@ -478,18 +441,16 @@
     .nav-btn {
       flex: 1; display: flex; flex-direction: column;
       align-items: center; gap: 3px; padding: 8px 4px;
-      border: none; background: transparent;
-      border-radius: 12px; cursor: pointer; transition: background 0.2s;
+      border: none; background: transparent; border-radius: 12px;
+      cursor: pointer; transition: background 0.2s;
     }
     .nav-btn .nav-icon { font-size: 1.3rem; }
     .nav-btn .nav-glosa {
-      font-family: var(--font-sans);
-      font-size: 0.5rem; font-weight: 700; letter-spacing: 0.8px;
-      text-transform: uppercase; color: var(--accent2);
+      font-family: var(--font-sans); font-size: 0.5rem; font-weight: 700;
+      letter-spacing: 0.8px; text-transform: uppercase; color: var(--accent2);
     }
     .nav-btn .nav-label {
-      font-family: var(--font-sans);
-      font-size: 0.62rem; font-weight: 600; color: var(--muted);
+      font-family: var(--font-sans); font-size: 0.62rem; font-weight: 600; color: var(--muted);
     }
     .nav-btn.active { background: rgba(232,160,69,.1); }
     .nav-btn.active .nav-label { color: var(--accent); }
@@ -526,14 +487,11 @@
     <!-- ══════════════════ VIEW: INICIO ══════════════════ -->
     <div id="view-inicio" class="view active">
       <div class="role-screen">
-
         <div class="role-header">
           <div class="glosa-sub">YO · QUERER · COMUNICAR</div>
           <h2>¿Quién usa la app?</h2>
           <p>Elige tu perfil para comunicarte</p>
         </div>
-
-        <!-- PERSONA SORDA -->
         <div class="role-card" onclick="showFlow('sordo')">
           <div class="role-icon amber">🤟</div>
           <div class="role-text">
@@ -543,8 +501,6 @@
           </div>
           <span class="role-arrow">›</span>
         </div>
-
-        <!-- PERSONA OYENTE -->
         <div class="role-card green" onclick="showFlow('oyente')">
           <div class="role-icon teal">🗣️</div>
           <div class="role-text">
@@ -554,7 +510,6 @@
           </div>
           <span class="role-arrow">›</span>
         </div>
-
       </div>
     </div>
 
@@ -566,7 +521,6 @@
         <span class="flow-badge">🤟 SEÑA → ESPAÑOL</span>
       </button>
 
-      <!-- Input tabs -->
       <div class="input-tabs">
         <button class="tab-btn active" id="stab-texto" onclick="setSordoTab('texto')">
           <span class="tb-glosa">ESCRIBIR · GLOSA</span>
@@ -628,8 +582,6 @@
 
       <!-- Resultado sordo -->
       <div class="result-block" id="sordo-result">
-
-        <!-- 1. Avatar -->
         <div class="result-section">
           <div class="result-section-label">
             <span class="rsl-glosa">VER · SEÑA · PUNTOS</span>
@@ -644,10 +596,9 @@
               ▶ Reproducir
             </button>
             <button class="speed-btn" id="sordo-speed-btn" onclick="cycleSpeed('sordo')">1×</button>
+            <button class="fs-btn" id="sordo-fs-btn" onclick="toggleFullscreen('sordo')" title="Pantalla completa">⛶</button>
           </div>
         </div>
-
-        <!-- 2. Glosa -->
         <div class="result-section">
           <div class="result-section-label">
             <span class="rsl-glosa">GLOSA · LSM</span>
@@ -655,8 +606,6 @@
           </div>
           <div class="glosa-wrap" id="sordo-glosa-out"></div>
         </div>
-
-        <!-- 3. Texto español -->
         <div class="result-section">
           <div class="result-section-label">
             <span class="rsl-glosa">TEXTO · ESPAÑOL</span>
@@ -664,7 +613,6 @@
           </div>
           <div class="text-result" id="sordo-text-out"></div>
         </div>
-
         <div class="result-actions">
           <button class="out-btn" onclick="copiarResultado('sordo')">
             <span class="ob-glosa">COPIAR</span>
@@ -691,7 +639,6 @@
         <span class="flow-badge teal">🗣️ ESPAÑOL → SEÑA</span>
       </button>
 
-      <!-- Input tabs -->
       <div class="input-tabs">
         <button class="tab-btn active teal" id="otab-escribe" onclick="setOyenteTab('escribe')">
           <span class="tb-glosa">ESCRIBIR · TEXTO</span>
@@ -739,8 +686,6 @@
           </button>
           <input type="file" id="audio-file-input" accept="audio/*">
         </div>
-
-        <!-- Transcripción previa -->
         <div class="card hidden" id="stt-preview-card">
           <div class="card-label">
             <span class="glosa-tag">TEXTO · TRANSCRITO · VOZ</span>
@@ -763,8 +708,6 @@
 
       <!-- Resultado oyente -->
       <div class="result-block" id="oyente-result">
-
-        <!-- 1. Avatar -->
         <div class="result-section">
           <div class="result-section-label">
             <span class="rsl-glosa">VER · SEÑA · PUNTOS</span>
@@ -779,10 +722,9 @@
               ▶ Reproducir
             </button>
             <button class="speed-btn" id="oyente-speed-btn" onclick="cycleSpeed('oyente')">1×</button>
+            <button class="fs-btn" id="oyente-fs-btn" onclick="toggleFullscreen('oyente')" title="Pantalla completa">⛶</button>
           </div>
         </div>
-
-        <!-- 2. Glosa -->
         <div class="result-section">
           <div class="result-section-label">
             <span class="rsl-glosa">GLOSA · LSM</span>
@@ -790,8 +732,6 @@
           </div>
           <div class="glosa-wrap" id="oyente-glosa-out"></div>
         </div>
-
-        <!-- 3. Texto español -->
         <div class="result-section">
           <div class="result-section-label">
             <span class="rsl-glosa">TEXTO · ESPAÑOL</span>
@@ -799,7 +739,6 @@
           </div>
           <div class="text-result" id="oyente-text-out"></div>
         </div>
-
         <div class="result-actions">
           <button class="out-btn" onclick="copiarResultado('oyente')">
             <span class="ob-glosa">COPIAR</span>
@@ -820,7 +759,6 @@
 
   </div><!-- /content -->
 
-  <!-- BOTTOM NAV -->
   <nav>
     <button class="nav-btn active" id="nav-inicio" onclick="showView('inicio', this)">
       <span class="nav-icon">🏠</span>
@@ -847,22 +785,15 @@
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.remove('active'));
     if (btn) btn.classList.add('active');
   }
-  function showFlow(who) {
-    showView(who, document.getElementById('nav-' + who));
-  }
-  function goHome() {
-    showView('inicio', document.getElementById('nav-inicio'));
-  }
+  function showFlow(who) { showView(who, document.getElementById('nav-' + who)); }
+  function goHome()       { showView('inicio', document.getElementById('nav-inicio')); }
 
-  // ── Sordo tabs ─────────────────────────────────────────────────────────
   function setSordoTab(tab) {
     document.getElementById('sordo-texto').classList.toggle('active', tab === 'texto');
     document.getElementById('sordo-camara').classList.toggle('active', tab === 'camara');
     document.getElementById('stab-texto').classList.toggle('active', tab === 'texto');
     document.getElementById('stab-cam').classList.toggle('active', tab === 'camara');
   }
-
-  // ── Oyente tabs ────────────────────────────────────────────────────────
   function setOyenteTab(tab) {
     document.getElementById('oyente-escribe').classList.toggle('active', tab === 'escribe');
     document.getElementById('oyente-voz').classList.toggle('active', tab === 'voz');
@@ -873,7 +804,56 @@
   function clearSordoInput()  { document.getElementById('sordo-input').value = ''; document.getElementById('sordo-result').classList.remove('visible'); }
   function clearOyenteInput() { document.getElementById('oyente-input').value = ''; document.getElementById('oyente-result').classList.remove('visible'); }
 
-  // ── Sample translation ─────────────────────────────────────────────────
+  // ── Fullscreen ─────────────────────────────────────────────────────────
+  function toggleFullscreen(who) {
+    const canvas = document.getElementById(who + '-canvas');
+    const btn    = document.getElementById(who + '-fs-btn');
+    if (!canvas) return;
+
+    if (!document.fullscreenElement) {
+      (canvas.requestFullscreen || canvas.webkitRequestFullscreen).call(canvas);
+    } else {
+      (document.exitFullscreen || document.webkitExitFullscreen).call(document);
+    }
+  }
+
+  // Update button icon and redraw at full resolution when entering/exiting
+  document.addEventListener('fullscreenchange',     _onFsChange);
+  document.addEventListener('webkitfullscreenchange', _onFsChange);
+
+  function _onFsChange() {
+    const el = document.fullscreenElement || document.webkitFullscreenElement;
+
+    ['sordo', 'oyente'].forEach(who => {
+      const canvas = document.getElementById(who + '-canvas');
+      const btn    = document.getElementById(who + '-fs-btn');
+      if (!canvas || !btn) return;
+
+      if (el === canvas) {
+        // Entering fullscreen — resize internal resolution to fill screen
+        canvas.width  = screen.width;
+        canvas.height = screen.height;
+        btn.textContent = '✕';
+        btn.title = 'Salir de pantalla completa';
+        // Redraw immediately at new size
+        const st = _anim[who];
+        if (st.frames.length) drawFrame(who, Math.max(0, st.frameIdx - 1));
+      } else if (!el) {
+        // Exiting — restore canvas intrinsic size so CSS controls it
+        canvas.removeAttribute('width');
+        canvas.removeAttribute('height');
+        btn.textContent = '⛶';
+        btn.title = 'Pantalla completa';
+        // Redraw at restored size
+        requestAnimationFrame(() => {
+          const st = _anim[who];
+          if (st.frames.length) drawFrame(who, Math.max(0, st.frameIdx - 1));
+        });
+      }
+    });
+  }
+
+  // ── Translation ────────────────────────────────────────────────────────
   const GLOSA_SAMPLE = ['YO','QUERER','AGUA','FAVOR','NECESITAR','AYUDA','HOY','TENER','DOLOR','GRACIAS'];
 
   function renderResultado(who, glosaWords, textoEsp) {
@@ -892,11 +872,7 @@
   async function traducirSordo() {
     const text = document.getElementById('sordo-input').value.trim();
     if (!text) return;
-
-    // La glosa de entrada es lo que escribió la persona sorda
-    const rawInput    = text.toLowerCase().trim();           // para buscar en el JSON
-    const glosaWords  = text.toUpperCase().split(/\s+/).filter(Boolean);  // para mostrar chips
-
+    const glosaWords = text.toUpperCase().split(/\s+/).filter(Boolean);
     try {
       const res  = await fetch('/translate', {
         method: 'POST', headers: {'Content-Type':'application/json'},
@@ -908,18 +884,13 @@
     } catch {
       renderResultado('sordo', glosaWords, '[Traducción del servidor]');
     }
-
-    // Animar con los landmarks de lo que escribió la persona sorda,
-    // no con lo que predijo el modelo (eso solo aplica a la cámara)
-    await fetchAndAnimateGlosas('sordo', glosaWords, rawInput);
+    await fetchAndAnimateGlosas('sordo', glosaWords, text.toLowerCase().trim());
   }
 
   async function traducirOyente() {
     const text = document.getElementById('oyente-input').value.trim();
     if (!text) return;
-
-    let glosaWords = [];
-    let rawTranslation = '';
+    let glosaWords = [], rawTranslation = '';
     try {
       const res  = await fetch('/translate', {
         method: 'POST', headers: {'Content-Type':'application/json'},
@@ -927,18 +898,14 @@
       });
       const data = await res.json();
       if (data.error) throw new Error(data.error);
-      glosaWords = data.translation.toUpperCase().split(/\s+/).filter(Boolean);
+      glosaWords     = data.translation.toUpperCase().split(/\s+/).filter(Boolean);
       rawTranslation = data.translation.toLowerCase().trim();
       renderResultado('oyente', glosaWords, text);
     } catch {
       glosaWords = GLOSA_SAMPLE.slice(0, Math.min(text.split(/\s+/).length + 2, GLOSA_SAMPLE.length));
       renderResultado('oyente', glosaWords, text);
     }
-
-    // Fetch and play landmark animation — pass raw phrase + word list
-    if (glosaWords.length > 0) {
-      await fetchAndAnimateGlosas('oyente', glosaWords, rawTranslation);
-    }
+    if (glosaWords.length > 0) await fetchAndAnimateGlosas('oyente', glosaWords, rawTranslation);
   }
 
   async function traducirDesdeVoz() {
@@ -954,18 +921,13 @@
     document.getElementById('oyente-input').value = text;
   }
 
-  // ── Output actions ─────────────────────────────────────────────────────
   function copiarResultado(who) {
     const t = document.getElementById(who + '-text-out').textContent.trim();
     if (t && navigator.clipboard) navigator.clipboard.writeText(t);
   }
 
-  // ── TTS server-side (gTTS via /tts) ───────────────────────────────────
-  // Browser speechSynthesis is NOT used — the device has no Spanish voices.
-  // Instead we POST the text to Flask /tts, get back an MP3 blob, and play
-  // it with a plain <audio> element. Works on any browser/device.
-
-  const _ttsAudio = new Audio();   // single reusable Audio element
+  // ── TTS ────────────────────────────────────────────────────────────────
+  const _ttsAudio = new Audio();
   let   _ttsWho   = null;
 
   function _setAudioBtn(who, state) {
@@ -987,63 +949,39 @@
   }
 
   async function reproducirAudio(who) {
-    // ── Toggle pause / resume ──────────────────────────────────────────
     if (_ttsWho === who && !_ttsAudio.paused) {
-      _ttsAudio.pause();
-      _setAudioBtn(who, 'paused');
-      return;
+      _ttsAudio.pause(); _setAudioBtn(who, 'paused'); return;
     }
     if (_ttsWho === who && _ttsAudio.paused && _ttsAudio.src) {
-      _ttsAudio.play();
-      _setAudioBtn(who, 'playing');
-      return;
+      _ttsAudio.play(); _setAudioBtn(who, 'playing'); return;
     }
-
-    // ── Stop anything playing ──────────────────────────────────────────
-    _ttsAudio.pause();
-    _ttsAudio.src = '';
+    _ttsAudio.pause(); _ttsAudio.src = '';
     if (_ttsWho) _setAudioBtn(_ttsWho, 'idle');
     _ttsWho = null;
 
-    // ── Get text ───────────────────────────────────────────────────────
     const el   = document.getElementById(who + '-text-out');
     const text = el ? el.textContent.trim() : '';
     if (!text) return;
 
-    // ── Show loading state ─────────────────────────────────────────────
     _ttsWho = who;
     _setAudioBtn(who, 'loading');
 
-    // ── Fetch MP3 from server ──────────────────────────────────────────
     try {
       const res = await fetch('/tts', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ text }),
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text }),
       });
-
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.error || `HTTP ${res.status}`);
-      }
-
+      if (!res.ok) { const err = await res.json().catch(() => ({})); throw new Error(err.error || `HTTP ${res.status}`); }
       const blob = await res.blob();
       const url  = URL.createObjectURL(blob);
-
-      // ── Play ─────────────────────────────────────────────────────────
       _ttsAudio.src = url;
-
-      _ttsAudio.oncanplaythrough = null; // clear old handlers
       _ttsAudio.onended  = () => { _ttsWho = null; _setAudioBtn(who, 'idle'); URL.revokeObjectURL(url); };
       _ttsAudio.onerror  = () => { _ttsWho = null; _setAudioBtn(who, 'idle'); };
       _ttsAudio.onpause  = () => { if (_ttsAudio.ended) return; _setAudioBtn(who, 'paused'); };
       _ttsAudio.onplay   = () => _setAudioBtn(who, 'playing');
-
       await _ttsAudio.play();
-
     } catch (err) {
-      _ttsWho = null;
-      _setAudioBtn(who, 'idle');
+      _ttsWho = null; _setAudioBtn(who, 'idle');
       console.error('TTS error:', err.message);
     }
   }
@@ -1073,56 +1011,33 @@
   function toggleSordoRecord() {
     const recB = document.getElementById('btn-sordo-rec');
     if (!sordoStream) return;
-
     if (!sordoIsRec) {
-      // ── START recording ──────────────────────────────────────────────
       sordoChunks = [];
-      const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp8')
-        ? 'video/webm;codecs=vp8' : 'video/webm';
+      const mime = MediaRecorder.isTypeSupported('video/webm;codecs=vp8') ? 'video/webm;codecs=vp8' : 'video/webm';
       sordoRec = new MediaRecorder(sordoStream, { mimeType: mime });
       sordoRec.ondataavailable = e => { if (e.data.size > 0) sordoChunks.push(e.data); };
-
       sordoRec.onstop = async () => {
         sordoIsRec = false;
-        recB.classList.remove('recording');
-        recB.innerHTML = '⏺ Grabar';
-        recB.disabled = true;
-
-        // Show processing state in result area
+        recB.classList.remove('recording'); recB.innerHTML = '⏺ Grabar'; recB.disabled = true;
         const block = document.getElementById('sordo-result');
         block.classList.add('visible');
         document.getElementById('sordo-glosa-out').innerHTML =
           '<span style="color:var(--muted);font-size:0.82rem">⏳ Procesando seña…</span>';
         document.getElementById('sordo-text-out').textContent = '';
         block.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-
         try {
-          // Extract up to 30 JPEG frames from the recorded video blob
           const blob   = new Blob(sordoChunks, { type: mime });
           const frames = await extractVideoFrames(blob, 30);
-
           if (!frames.length) throw new Error('No se pudieron extraer frames del video.');
-
           const res  = await fetch('/infer', {
-            method:  'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body:    JSON.stringify({ frames, mirror: false }),
+            method: 'POST', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ frames, mirror: false }),
           });
           const data = await res.json();
-
           if (data.error) throw new Error(data.error);
-
-          // Build glosa chips from top3 for richer display
-          const glosaWords = [data.glosa];   // main prediction
+          const glosaWords = [data.glosa];
           const conf       = (data.conf * 100).toFixed(1);
-          const label      = `${data.glosa} (${conf}%)`;
-
-          // Show top3 as extra chips if available
-          const top3Words = (data.top3 || []).map(([g]) => g);
-
-          renderResultado('sordo', glosaWords, label);
-
-          // Show top3 below in a subtle way
+          renderResultado('sordo', glosaWords, `${data.glosa} (${conf}%)`);
           const glosaEl = document.getElementById('sordo-glosa-out');
           if (data.top3 && data.top3.length > 1) {
             const extras = data.top3.slice(1).map(([g, p]) =>
@@ -1130,77 +1045,45 @@
             ).join('');
             glosaEl.innerHTML += ' ' + extras;
           }
-
-          // Load landmarks into animator
-          if (data.landmarks && data.landmarks.length > 0) {
-            setLandmarkFrames('sordo', data.landmarks);
-          }
-
+          if (data.landmarks && data.landmarks.length > 0) setLandmarkFrames('sordo', data.landmarks);
         } catch (err) {
           document.getElementById('sordo-glosa-out').innerHTML =
             `<span style="color:var(--danger);font-size:0.82rem">⚠ ${err.message}</span>`;
           document.getElementById('sordo-text-out').textContent = '';
         }
-
         recB.disabled = false;
       };
-
-      sordoRec.start(200); // chunk every 200ms
-      sordoIsRec = true;
-      recB.classList.add('recording');
-      recB.innerHTML = '<span class="rec-dot"></span> Detener';
-
+      sordoRec.start(200); sordoIsRec = true;
+      recB.classList.add('recording'); recB.innerHTML = '<span class="rec-dot"></span> Detener';
     } else {
-      // ── STOP recording ───────────────────────────────────────────────
       sordoRec.stop();
     }
   }
 
-  // Extract JPEG frames from a video Blob by seeking through it
   function extractVideoFrames(blob, maxFrames) {
     return new Promise(resolve => {
-      const url    = URL.createObjectURL(blob);
-      const video  = document.createElement('video');
+      const url = URL.createObjectURL(blob);
+      const video = document.createElement('video');
       const canvas = document.createElement('canvas');
-      const ctx    = canvas.getContext('2d');
+      const ctx = canvas.getContext('2d');
       const frames = [];
-
-      video.src    = url;
-      video.muted  = true;
-      video.playsInline = true;
-
+      video.src = url; video.muted = true; video.playsInline = true;
       video.onerror = () => { URL.revokeObjectURL(url); resolve([]); };
-
       video.onloadedmetadata = () => {
-        canvas.width  = video.videoWidth  || 640;
-        canvas.height = video.videoHeight || 480;
-
-        const dur      = video.duration;
-        const count    = Math.min(maxFrames, 30);
-        const interval = dur / count;
-        let   idx      = 0;
-
+        canvas.width = video.videoWidth || 640; canvas.height = video.videoHeight || 480;
+        const dur = video.duration, count = Math.min(maxFrames, 30), interval = dur / count;
+        let idx = 0;
         const seekNext = () => {
-          if (idx >= count) {
-            URL.revokeObjectURL(url);
-            resolve(frames);
-            return;
-          }
-          video.currentTime = idx * interval;
-          idx++;
+          if (idx >= count) { URL.revokeObjectURL(url); resolve(frames); return; }
+          video.currentTime = idx * interval; idx++;
         };
-
         video.onseeked = () => {
           ctx.drawImage(video, 0, 0);
-          const b64 = canvas.toDataURL('image/jpeg', 0.80)
-                            .replace(/^data:image\/\w+;base64,/, '');
-          frames.push(b64);
+          frames.push(canvas.toDataURL('image/jpeg', 0.80).replace(/^data:image\/\w+;base64,/, ''));
           seekNext();
         };
-
         seekNext();
       };
-
       video.load();
     });
   }
@@ -1213,13 +1096,8 @@
   const previewText = document.getElementById('stt-preview-text');
 
   function setMicState(state) {
-    // state: 'idle' | 'recording' | 'processing'
-    const icons = { idle: '🎙️', recording: '⏹', processing: '⏳' };
-    const labels = {
-      idle:       'Toca para hablar',
-      recording:  'Grabando… toca para detener',
-      processing: 'Procesando audio…',
-    };
+    const icons  = { idle: '🎙️', recording: '⏹', processing: '⏳' };
+    const labels = { idle: 'Toca para hablar', recording: 'Grabando… toca para detener', processing: 'Procesando audio…' };
     micBtn.textContent = icons[state] || '🎙️';
     micLabel.textContent = labels[state] || '';
     micBtn.classList.toggle('recording', state === 'recording');
@@ -1227,105 +1105,60 @@
   }
 
   async function toggleMic() {
-    if (isListening) {
-      if (micRec && micRec.state !== 'inactive') micRec.stop();
-      return;
-    }
-    if (!navigator.mediaDevices || !window.MediaRecorder) {
-      alert('Tu navegador no soporta grabación de audio.');
-      return;
-    }
-    try {
-      micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-    } catch(e) {
-      alert('No se pudo acceder al micrófono: ' + e.message);
-      return;
-    }
-
+    if (isListening) { if (micRec && micRec.state !== 'inactive') micRec.stop(); return; }
+    if (!navigator.mediaDevices || !window.MediaRecorder) { alert('Tu navegador no soporta grabación de audio.'); return; }
+    try { micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false }); }
+    catch(e) { alert('No se pudo acceder al micrófono: ' + e.message); return; }
     micChunks = [];
     const mime = ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg;codecs=opus', 'audio/ogg']
       .find(m => MediaRecorder.isTypeSupported(m)) || '';
     micRec = new MediaRecorder(micStream, mime ? { mimeType: mime } : {});
-
     micRec.ondataavailable = e => { if (e.data.size > 0) micChunks.push(e.data); };
-
     micRec.onstop = async () => {
-      micStream.getTracks().forEach(t => t.stop());
-      micStream = null;
-      isListening = false;
-
+      micStream.getTracks().forEach(t => t.stop()); micStream = null; isListening = false;
       setMicState('processing');
-
-      const blob     = new Blob(micChunks, { type: micRec.mimeType || 'audio/webm' });
-      const filename = (mime.includes('ogg') ? 'rec.ogg' : 'rec.webm');
-      const fd       = new FormData();
-      fd.append('audio', blob, filename);
-
+      const blob = new Blob(micChunks, { type: micRec.mimeType || 'audio/webm' });
+      const fd   = new FormData();
+      fd.append('audio', blob, mime.includes('ogg') ? 'rec.ogg' : 'rec.webm');
       let transcribed = '';
       try {
         const res  = await fetch('/stt', { method: 'POST', body: fd });
         const data = await res.json();
-        if (data.error) {
-          transcribed = '⚠ Error del servidor: ' + data.error;
-        } else {
-          transcribed = (data.text || '').trim();
-          if (!transcribed) transcribed = '⚠ No se detectó voz en el audio.';
-        }
-      } catch(err) {
-        transcribed = '⚠ No se pudo conectar al servidor (/stt).';
-      }
-
+        transcribed = data.error ? '⚠ Error: ' + data.error : (data.text || '').trim() || '⚠ No se detectó voz.';
+      } catch { transcribed = '⚠ No se pudo conectar al servidor (/stt).'; }
       previewText.textContent = transcribed;
       previewCard.classList.remove('hidden');
-      // Scroll to preview
       previewCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
       setMicState('idle');
     };
-
-    micRec.start(500); // collect data every 500ms so onstop gets chunks reliably
-    isListening = true;
-    setMicState('recording');
+    micRec.start(500); isListening = true; setMicState('recording');
   }
 
-  // ── Upload audio ───────────────────────────────────────────────────────
   document.getElementById('audio-file-input').addEventListener('change', async function() {
-    const file = this.files[0];
-    if (!file) return;
-    this.value = ''; // reset so same file can be re-uploaded
-
+    const file = this.files[0]; if (!file) return; this.value = '';
     setMicState('processing');
-
-    const fd = new FormData();
-    fd.append('audio', file, file.name);
-
+    const fd = new FormData(); fd.append('audio', file, file.name);
     let transcribed = '';
     try {
       const res  = await fetch('/stt', { method: 'POST', body: fd });
       const data = await res.json();
-      if (data.error) {
-        transcribed = '⚠ Error del servidor: ' + data.error;
-      } else {
-        transcribed = (data.text || '').trim();
-        if (!transcribed) transcribed = '⚠ No se detectó voz en el archivo.';
-      }
-    } catch(err) {
-      transcribed = '⚠ No se pudo conectar al servidor (/stt).';
-    }
-
+      transcribed = data.error ? '⚠ Error: ' + data.error : (data.text || '').trim() || '⚠ No se detectó voz.';
+    } catch { transcribed = '⚠ No se pudo conectar al servidor (/stt).'; }
     previewText.textContent = transcribed;
     previewCard.classList.remove('hidden');
     previewCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     setMicState('idle');
   });
+
   // ── Landmark Animator ─────────────────────────────────────────────────
-  // Skeleton connections — indices into the 59-point array
-  const BODY_CONNECTIONS = [
-    [0,1],[1,2],[2,3],[3,4],
-    [0,5],[5,6],[6,7],[7,8],
-    [9,10],
-    [0,9],[0,10],
-    [5,9],[6,10],
-  ];
+// Upper body only — correct COCO indices (no legs, no face)
+const BODY_CONNECTIONS = [
+  [5,7],[7,9],       // left arm
+  [6,8],[8,10],      // right arm
+  [5,6],             // shoulders
+  [5,11],[6,12],     // torso sides
+  [11,12],           // hips
+];
   function handConnections(offset) {
     return [
       [0,1],[1,2],[2,3],[3,4],
@@ -1339,139 +1172,72 @@
   const LEFT_HAND_CONN  = handConnections(17);
   const RIGHT_HAND_CONN = handConnections(38);
 
-  // Per-who animation state
   const _anim = {
-    sordo:  { frames: [], frameIdx: 0, rafId: null, speed: 1, playing: false,
-              glosaQueue: [], glosaIdx: 0, autoPlay: false },
-    oyente: { frames: [], frameIdx: 0, rafId: null, speed: 1, playing: false,
-              glosaQueue: [], glosaIdx: 0, autoPlay: false },
+    sordo:  { frames: [], frameIdx: 0, rafId: null, speed: 1, playing: false, glosaQueue: [], glosaIdx: 0, autoPlay: false, _label: '' },
+    oyente: { frames: [], frameIdx: 0, rafId: null, speed: 1, playing: false, glosaQueue: [], glosaIdx: 0, autoPlay: false, _label: '' },
   };
   const SPEEDS = [0.5, 1, 1.5, 2];
 
-  // ── Fetch landmarks for a list of glosas and play them in sequence ──────
-  // Helper: fetch landmarks for a single glosa string from /landmarks
   async function _fetchLandmarks(glosa) {
     const res  = await fetch('/landmarks', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ glosa }),
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ glosa }),
     });
     const data = await res.json();
-    if (data.landmarks && data.landmarks.length > 0) {
-      const T  = data.landmarks.length;
-      const P  = data.landmarks[0]?.length  ?? '?';
-      const XY = data.landmarks[0]?.[0]?.length ?? '?';
-      console.log('[landmarks] "' + glosa + '" shape: (' + T + ' frames x ' + P + ' puntos x ' + XY + ' coords)');
-      return data.landmarks;
-    }
-    console.warn('[landmarks] "' + glosa + '" NO encontrado.');
+    if (data.landmarks && data.landmarks.length > 0) return data.landmarks;
     return null;
   }
 
-  // Fetch landmarks for a translation and animate in sequence.
-  // Strategy:
-  //   1. Try the full phrase (rawPhrase) as one entry — covers multi-word glosas like "buenos dias"
-  //   2. For each individual word not covered by step 1, try it separately
-  //   rawPhrase is the raw lowercased translation string from the server.
-  //   glosaWords is the array of uppercased individual words (for display chips).
   async function fetchAndAnimateGlosas(who, glosaWords, rawPhrase) {
     const st = _anim[who];
     cancelAnimationFrame(st.rafId);
-    st.playing    = false;
-    st.glosaQueue = [];
-    st.glosaIdx   = 0;
-
+    st.playing = false; st.glosaQueue = []; st.glosaIdx = 0;
     _drawCanvasMessage(who, '⏳ Cargando animación…');
-
     const queue = [];
-
-    // ── Step 1: try the full phrase first ──────────────────────────────
     if (rawPhrase) {
-      try {
-        const frames = await _fetchLandmarks(rawPhrase);
-        if (frames) {
-          // Full phrase found — use it as a single animation clip
-          queue.push({ glosa: rawPhrase.toUpperCase(), frames });
-        }
-      } catch (err) {
-        console.warn('[landmarks] error buscando frase completa:', err);
-      }
+      try { const f = await _fetchLandmarks(rawPhrase); if (f) queue.push({ glosa: rawPhrase.toUpperCase(), frames: f }); }
+      catch(e) { console.warn('[landmarks] error frase completa:', e); }
     }
-
-    // ── Step 2: if full phrase not found, try each word individually ───
     if (!queue.length) {
       for (const glosa of glosaWords) {
         try {
-          const frames = await _fetchLandmarks(glosa.toLowerCase());
-          if (frames) {
-            queue.push({ glosa, frames });
-          } else {
-            // Also try uppercase (some JSON keys may be uppercase)
-            const framesUp = await _fetchLandmarks(glosa);
-            if (framesUp) queue.push({ glosa, frames: framesUp });
-          }
-        } catch (err) {
-          console.error('[landmarks] error de red para "' + glosa + '":', err);
-        }
+          const f = await _fetchLandmarks(glosa.toLowerCase());
+          if (f) { queue.push({ glosa, frames: f }); continue; }
+          const fu = await _fetchLandmarks(glosa);
+          if (fu) queue.push({ glosa, frames: fu });
+        } catch(e) { console.error('[landmarks] error "' + glosa + '":', e); }
       }
     }
-
-    if (!queue.length) {
-      _drawCanvasMessage(who, '⚠ Sin animación para estas glosas');
-      _updatePlayBtn(who, false);
-      return;
-    }
-
-    st.glosaQueue = queue;
-    st.glosaIdx   = 0;
-    st.autoPlay   = true;
-    _loadQueueFrame(who, 0);
-    _playSequence(who);
+    if (!queue.length) { _drawCanvasMessage(who, '⚠ Sin animación para estas glosas'); _updatePlayBtn(who, false); return; }
+    st.glosaQueue = queue; st.glosaIdx = 0; st.autoPlay = true;
+    _loadQueueFrame(who, 0); _playSequence(who);
   }
 
-  // Load a specific glosa from the queue into st.frames
   function _loadQueueFrame(who, qIdx) {
-    const st   = _anim[who];
-    const item = st.glosaQueue[qIdx];
+    const st = _anim[who], item = st.glosaQueue[qIdx];
     if (!item) return;
-    st.frames   = item.frames;
-    st.frameIdx = 0;
+    st.frames = item.frames; st.frameIdx = 0;
     _drawGlosaLabel(who, item.glosa, qIdx + 1, st.glosaQueue.length);
-    // Two rAF ticks so the DOM renders the result-block before we draw,
-    // otherwise canvas.offsetWidth is 0 and drawFrame does nothing.
     requestAnimationFrame(() => requestAnimationFrame(() => drawFrame(who, 0)));
   }
 
-  // Play all glosas in sequence, then stop
   function _playSequence(who) {
     const st = _anim[who];
     if (!st.glosaQueue.length) return;
-    st.playing = true;
-    _updatePlayBtn(who, true);
-
+    st.playing = true; _updatePlayBtn(who, true);
     const FPS_MS = () => (1000 / 30) / st.speed;
     let last = 0;
-
     const step = (ts) => {
       if (!st.playing) return;
-
       if (ts - last >= FPS_MS()) {
-        last = ts;
-        drawFrame(who, st.frameIdx);
-        st.frameIdx++;
-
-        // Finished current glosa → advance to next
+        last = ts; drawFrame(who, st.frameIdx); st.frameIdx++;
         if (st.frameIdx >= st.frames.length) {
           st.glosaIdx++;
           if (st.glosaIdx < st.glosaQueue.length) {
             _loadQueueFrame(who, st.glosaIdx);
           } else {
-            // All glosas done — stop and reset to first
-            st.playing  = false;
-            st.glosaIdx = 0;
-            _loadQueueFrame(who, 0);
-            _updatePlayBtn(who, false);
-            return;
+            st.playing = false; st.glosaIdx = 0;
+            _loadQueueFrame(who, 0); _updatePlayBtn(who, false); return;
           }
         }
       }
@@ -1483,55 +1249,35 @@
   function setLandmarkFrames(who, landmarks) {
     const st = _anim[who];
     cancelAnimationFrame(st.rafId);
-    st.glosaQueue = [];
-    st.frames     = landmarks;
-    st.frameIdx   = 0;
-    st.playing    = false;
+    st.glosaQueue = []; st.frames = landmarks; st.frameIdx = 0; st.playing = false;
     _updatePlayBtn(who, false);
     if (landmarks.length > 0) drawFrame(who, 0);
   }
 
   function toggleAnimation(who) {
     const st = _anim[who];
-
-    // If we have a queue (oyente flow) → play/pause the sequence
     if (st.glosaQueue.length > 0) {
-      if (st.playing) {
-        st.playing = false;
-        cancelAnimationFrame(st.rafId);
-        _updatePlayBtn(who, false);
-      } else {
-        _playSequence(who);
-      }
+      if (st.playing) { st.playing = false; cancelAnimationFrame(st.rafId); _updatePlayBtn(who, false); }
+      else { _playSequence(who); }
       return;
     }
-
-    // Single-clip mode (sordo infer flow)
     if (!st.frames.length) return;
-    st.playing = !st.playing;
-    _updatePlayBtn(who, st.playing);
+    st.playing = !st.playing; _updatePlayBtn(who, st.playing);
     if (st.playing) {
       const FPS_MS = () => (1000 / 30) / st.speed;
       let last = 0;
       const step = (ts) => {
         if (!st.playing) return;
-        if (ts - last >= FPS_MS()) {
-          last = ts;
-          drawFrame(who, st.frameIdx);
-          st.frameIdx = (st.frameIdx + 1) % st.frames.length;
-        }
+        if (ts - last >= FPS_MS()) { last = ts; drawFrame(who, st.frameIdx); st.frameIdx = (st.frameIdx + 1) % st.frames.length; }
         st.rafId = requestAnimationFrame(step);
       };
       st.rafId = requestAnimationFrame(step);
-    } else {
-      cancelAnimationFrame(st.rafId);
-    }
+    } else { cancelAnimationFrame(st.rafId); }
   }
 
   function cycleSpeed(who) {
-    const st  = _anim[who];
-    const idx = SPEEDS.indexOf(st.speed);
-    st.speed  = SPEEDS[(idx + 1) % SPEEDS.length];
+    const st = _anim[who], idx = SPEEDS.indexOf(st.speed);
+    st.speed = SPEEDS[(idx + 1) % SPEEDS.length];
     document.getElementById(who + '-speed-btn').textContent = st.speed + '×';
   }
 
@@ -1546,105 +1292,118 @@
     const canvas = document.getElementById(who + '-canvas');
     if (!canvas) return;
     const draw = () => {
-      const W = canvas.offsetWidth || 320;
-      const H = canvas.offsetHeight || 240;
+      const W = canvas.offsetWidth || 320, H = canvas.offsetHeight || 240;
       canvas.width = W; canvas.height = H;
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, W, H);
       ctx.fillStyle = 'rgba(122,128,153,0.7)';
-      ctx.font = '14px sans-serif';
-      ctx.textAlign = 'center';
-      ctx.fillText(msg, W / 2, H / 2);
-      ctx.textAlign = 'left';
+      ctx.font = '14px sans-serif'; ctx.textAlign = 'center';
+      ctx.fillText(msg, W / 2, H / 2); ctx.textAlign = 'left';
     };
-    // If canvas has no size yet (block just became visible), wait a tick
-    if (canvas.offsetWidth === 0) {
-      requestAnimationFrame(() => requestAnimationFrame(draw));
-    } else {
-      draw();
-    }
+    canvas.offsetWidth === 0 ? requestAnimationFrame(() => requestAnimationFrame(draw)) : draw();
   }
 
   function _drawGlosaLabel(who, glosa, idx, total) {
-    const canvas = document.getElementById(who + '-canvas');
-    if (!canvas) return;
-    // Will be drawn on next drawFrame call — store for overlay
     _anim[who]._label = total > 1 ? `${glosa}  (${idx}/${total})` : glosa;
   }
 
-  function drawFrame(who, frameIdx) {
-    const canvas = document.getElementById(who + '-canvas');
-    if (!canvas) return;
-    const pts = _anim[who].frames[frameIdx];
-    if (!pts) return;
+function drawFrame(who, frameIdx) {
+  const canvas = document.getElementById(who + '-canvas');
+  if (!canvas) return;
+  const pts = _anim[who].frames[frameIdx];
+  if (!pts) return;
 
-    const W = canvas.offsetWidth  || 320;
-    const H = canvas.offsetHeight || 240;
-    if (canvas.width !== W)  canvas.width  = W;
-    if (canvas.height !== H) canvas.height = H;
+  const W = document.fullscreenElement === canvas ? canvas.width  : (canvas.offsetWidth  || 320);
+  const H = document.fullscreenElement === canvas ? canvas.height : (canvas.offsetHeight || 240);
+  if (canvas.width !== W)  canvas.width  = W;
+  if (canvas.height !== H) canvas.height = H;
 
-    const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, W, H);
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
 
-    const scale = H / 3.2;
-    const ox    = W / 2;
-    const oy    = H * 0.35;
+  const scale = H / 2, ox = W / 2, oy = H * 0.35;
+  const px = i => ox + pts[i][0] * scale;
+  const py = i => oy + pts[i][1] * scale;
 
-    const px = (i) => ox + pts[i][0] * scale;
-    const py = (i) => oy + pts[i][1] * scale;
-
-    function drawConns(conns, color) {
-      ctx.strokeStyle = color;
-      ctx.lineWidth   = 2;
-      ctx.lineCap     = 'round';
-      for (const [a, b] of conns) {
-        if (!pts[a] || !pts[b]) continue;
-        if (pts[a][0] === 0 && pts[a][1] === 0) continue;
-        if (pts[b][0] === 0 && pts[b][1] === 0) continue;
-        ctx.beginPath();
-        ctx.moveTo(px(a), py(a));
-        ctx.lineTo(px(b), py(b));
-        ctx.stroke();
-      }
+  function drawConns(conns, color, width = 1.5) {
+    ctx.strokeStyle = color; ctx.lineWidth = width; ctx.lineCap = 'round';
+    for (const [a, b] of conns) {
+      if (!pts[a] || !pts[b]) continue;
+      if (pts[a][0] === 0 && pts[a][1] === 0) continue;
+      if (pts[b][0] === 0 && pts[b][1] === 0) continue;
+      ctx.beginPath();
+      ctx.moveTo(px(a), py(a));
+      ctx.lineTo(px(b), py(b));
+      ctx.stroke();
     }
-
-    function drawDots(indices, color, r) {
-      ctx.fillStyle = color;
-      for (const i of indices) {
-        if (!pts[i]) continue;
-        if (pts[i][0] === 0 && pts[i][1] === 0) continue;
-        ctx.beginPath();
-        ctx.arc(px(i), py(i), r, 0, Math.PI * 2);
-        ctx.fill();
-      }
-    }
-
-    // Body (amber)
-    drawConns(BODY_CONNECTIONS, 'rgba(232,160,69,0.7)');
-    drawDots(Array.from({length:17}, (_,i) => i), '#e8a045', 3.5);
-
-    // Left hand (teal)
-    drawConns(LEFT_HAND_CONN, 'rgba(62,207,176,0.8)');
-    drawDots(Array.from({length:21}, (_,i) => i+17), '#3ecfb0', 3);
-
-    // Right hand (lighter teal)
-    drawConns(RIGHT_HAND_CONN, 'rgba(62,207,176,0.55)');
-    drawDots(Array.from({length:21}, (_,i) => i+38), '#7eddd0', 3);
-
-    // Glosa label overlay (top-left)
-    const label = _anim[who]._label;
-    if (label) {
-      ctx.font      = 'bold 13px monospace';
-      ctx.fillStyle = 'rgba(232,160,69,0.9)';
-      ctx.fillText(label, 10, 20);
-    }
-
-    // Frame counter (bottom-left, subtle)
-    ctx.fillStyle = 'rgba(122,128,153,0.45)';
-    ctx.font      = '10px monospace';
-    ctx.fillText(`${frameIdx + 1}/${_anim[who].frames.length}`, 8, H - 6);
   }
 
+  function drawDots(indices, color, r) {
+    ctx.fillStyle = color;
+    for (const i of indices) {
+      if (!pts[i] || (pts[i][0] === 0 && pts[i][1] === 0)) continue;
+      ctx.beginPath(); ctx.arc(px(i), py(i), r, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  // ── Head circle ──────────────────────────────────────────────────────
+  // Estimate head center from shoulder midpoint — position it above
+  const ls = pts[5], rs = pts[6];
+  if (ls && rs && !(ls[0] === 0 && rs[0] === 0)) {
+    const headX = (px(5) + px(6)) / 2;
+    const shoulderW = Math.abs(px(6) - px(5));
+    const headR = shoulderW * 0.4;
+    // neck is roughly halfway between shoulders and head center
+    const neckY = Math.min(py(5), py(6)) - headR * 0.4;
+    const headY = neckY - headR;
+
+    // neck line
+    ctx.strokeStyle = 'rgba(232,160,69,0.6)';
+    ctx.lineWidth = 1.5; ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(headX, (py(5) + py(6)) / 2);
+    ctx.lineTo(headX, neckY);
+    ctx.stroke();
+
+    // head circle
+    ctx.beginPath();
+    ctx.arc(headX, headY, headR, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(232,160,69,0.75)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // ── Body (upper only, no face dots, no leg dots) ──────────────────────
+  drawConns(BODY_CONNECTIONS, 'rgba(232,160,69,0.7)', 2);
+  // Shoulder and wrist dots only (skip face 0-4, skip knees/ankles 13-16)
+  drawDots([5,6,7,8,9,10,11,12], '#e8a045', 3);
+
+  // ── Hands ─────────────────────────────────────────────────────────────
+  drawConns(LEFT_HAND_CONN,  'rgba(62,207,176,0.8)');
+  drawDots(Array.from({length:21}, (_,i) => i+17), '#3ecfb0', 1.5);
+  drawConns(RIGHT_HAND_CONN, 'rgba(62,207,176,0.55)');
+  drawDots(Array.from({length:21}, (_,i) => i+38), '#7eddd0', 1.5);
+
+  // ── Labels ────────────────────────────────────────────────────────────
+  const label = _anim[who]._label;
+  if (label) {
+    ctx.font = 'bold 13px monospace';
+    ctx.fillStyle = 'rgba(232,160,69,0.9)';
+    ctx.fillText(label, 10, 20);
+  }
+  ctx.fillStyle = 'rgba(122,128,153,0.45)'; ctx.font = '10px monospace';
+  ctx.fillText(`${frameIdx + 1}/${_anim[who].frames.length}`, 8, H - 6);
+}
+	document.addEventListener('keydown', e => {
+	  if (e.code !== 'Space' && e.code !== 'Enter') return;
+	  const el = document.fullscreenElement || document.webkitFullscreenElement;
+	  if (!el) return;
+	  e.preventDefault(); // stop the page from scrolling
+	  const who = el.id === 'sordo-canvas' ? 'sordo'
+					 : el.id === 'oyente-canvas' ? 'oyente'
+					 : null;
+	  if (who) toggleAnimation(who);
+	});
   </script>
 </body>
 </html>
