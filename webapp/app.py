@@ -160,7 +160,7 @@ def _get_landmarks_for_glosa(glosa: str) -> list:
         next((v for k, v in _landmarks_db.items() if k.lower() == key), None)
     )
     if not entry:
-        print(f"  [landmarks] '{glosa}' (norm: '{norm_glosa}') no encontrado en DB")
+        print(f"  [landmarks] '{glosa}' (norm: '{glosa}') no encontrado en DB")
         return []
 
     raw_frames = entry.get("frames", [])
@@ -545,5 +545,5 @@ if __name__ == "__main__":
     print("=" * 60)
     load_resources()
     print("\n🚀 Servidor en https://localhost:8443\n" + "=" * 60)
-    app.run(host="0.0.0.0", port=8443, debug=False,
+    app.run(host="0.0.0.0", port=8443, debug=True,
             ssl_context=("cert.pem", "key.pem"))
